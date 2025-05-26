@@ -1,6 +1,7 @@
 """
 Enhanced Task Orchestrator
 Version with Task Master MCP integration and progress tracking
+Now includes comprehensive error handling and notification system
 """
 
 import os
@@ -12,6 +13,8 @@ import time
 import subprocess
 import re
 import platform
+import signal
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
@@ -48,10 +51,15 @@ class EnhancedTaskOrchestrator:
         self.project_root = os.path.abspath(self.config.get("project_dir", "."))
         
         # Initialize components
-        self.claude = ClaudeDesktopAutomation(self.config.get("claude_desktop", {}).get("config_path"))
-        self.code_analyzer = CodeAnalyzer()
-        self.notification = NotificationManager(self.config.get("notification", {}).get("config_path"))
-        self.task_master_client = TaskMasterMCPClient(self.project_root)
+        try:
+            self.claude = ClaudeDesktopAutomation(self.config.get("claude_desktop", {}).get("config_path"))
+            self.code_analyzer = CodeAnalyzer()
+            self.notification = NotificationManager(self.config.get("notification", {}).get("config_path"))
+            self.task_master_client = TaskMasterMCPClient(self.project_root)
+        except Exception as e:
+            logger.error(f"Failed to initialize components: {e}")
+            self._send_critical_error_notification("Initialization Error", str(e))
+            raise
         
         # Progress tracking state
         self.progress_state = {
@@ -66,7 +74,162 @@ class EnhancedTaskOrchestrator:
         # Task Master MCP check flag
         self.task_master_checked = False
         
+        # Error tracking
+        self.error_count = 0
+        self.last_error_time = None
+        
         logger.info("Enhanced Task Orchestrator initialization complete")
+        
+    def _send_critical_error_notification(self, error_type: str, error_message: str, 
+                                        log_excerpt: str = None, include_recovery_steps: bool = True):
+        """Send critical error notification to Slack"""
+        try:
+            title = f"🚨 Critical Automation Error: {error_type}"
+            
+            message = f"**Error Type:** {error_type}\n"
+            message += f"**Error Message:** {error_message}\n"
+            message += f"**System:** Task Orchestrator Enhanced\n"
+            message += f"**Timestamp:** {datetime.now().isoformat()}\n"
+            message += f"**Status:** System encountered critical error\n\n"
+            
+            if log_excerpt:
+                message += f"**Log Excerpt:**\n```\n{log_excerpt[:1000]}...\n```\n\n"
+            
+            if include_recovery_steps:
+                if "pyscreeze" in error_message.lower() or "pyautogui" in error_message.lower():
+                    message += "**Recovery Steps:**\n"
+                    message += "1. Run: `python fix_pyautogui_dependencies.py`\n"
+                    message += "2. Or run: `quick_fix.bat`\n"
+                    message += "3. Restart automation system\n\n"
+                else:
+                    message += "**Action Required:**\n"
+                    message += "• Check system logs for details\n"
+                    message += "• Resolve dependency issues\n"
+                    message += "• Restart automation system\n\n"
+            
+            message += f"**Project:** {self.config.get('dev_project_name', 'Unknown')}\n"
+            message += f"**Project Path:** {self.config.get('dev_project_path', 'Unknown')}"
+            
+            # Send notification
+            success = self.notification.send_notification(
+                message=message,
+                title=title,
+                severity="error"
+            )
+            
+            if success:
+                logger.info("Critical error notification sent successfully")
+            else:
+                logger.error("Failed to send critical error notification")
+                
+        except Exception as e:
+            logger.error(f"Exception in error notification system: {e}")
+    
+    def _handle_pyautogui_error(self, error: Exception):
+        """Handle PyAutoGUI specific errors"""
+        error_message = str(error)
+        
+        if "pyscreeze" in error_message.lower():
+            logger.error("Detected PyAutoGUI pyscreeze dependency error")
+            
+            log_excerpt = f"""
+PyAutoGUI Error: {error_message}
+This error typically occurs when:
+1. Pillow (PIL) is not properly installed
+2. pyscreeze module is missing
+3. Python version is incompatible with current Pillow version
+
+Time: {datetime.now().isoformat()}
+            """
+            
+            self._send_critical_error_notification(
+                "PyAutoGUI Dependency Error",
+                error_message,
+                log_excerpt
+            )
+            
+            # Attempt automatic recovery
+            logger.info("Attempting automatic dependency fix...")
+            try:
+                result = subprocess.run([
+                    sys.executable, "fix_pyautogui_dependencies.py"
+                ], capture_output=True, text=True, timeout=300)
+                
+                if result.returncode == 0:
+                    logger.info("Automatic dependency fix completed successfully")
+                    return True
+                else:
+                    logger.error(f"Automatic dependency fix failed: {result.stderr}")
+                    return False
+                    
+            except Exception as fix_error:
+                logger.error(f"Failed to run automatic dependency fix: {fix_error}")
+                return False
+        else:
+            # Other PyAutoGUI errors
+            self._send_critical_error_notification(
+                "PyAutoGUI Error",
+                error_message,
+                f"PyAutoGUI error occurred at {datetime.now().isoformat()}: {error_message}"
+            )
+            
+        return False
+    
+    def _handle_system_error(self, error: Exception, context: str = "Unknown"):
+        """Handle general system errors"""
+        error_message = str(error)
+        error_traceback = traceback.format_exc()
+        
+        self.error_count += 1
+        self.last_error_time = datetime.now()
+        
+        logger.error(f"System error in {context}: {error_message}")
+        logger.error(f"Traceback: {error_traceback}")
+        
+        # Send notification for critical errors
+        if self.error_count >= 3 or "critical" in error_message.lower():
+            log_excerpt = f"""
+Context: {context}
+Error Count: {self.error_count}
+Error Message: {error_message}
+
+Traceback:
+{error_traceback}
+            """
+            
+            self._send_critical_error_notification(
+                f"System Error ({context})",
+                error_message,
+                log_excerpt
+            )
+    
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}. Initiating graceful shutdown...")
+            
+            # Send shutdown notification
+            try:
+                self.notification.send_notification(
+                    "System received shutdown signal. Gracefully terminating automation.",
+                    "🛑 Automation Shutdown",
+                    "warning"
+                )
+            except:
+                pass
+            
+            # Save progress state
+            try:
+                self.save_progress_state()
+            except:
+                pass
+            
+            logger.info("Graceful shutdown completed")
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, signal_handler)
         
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration file"""
@@ -189,12 +352,41 @@ After checking, please organize the results in the following format:
             except Exception as e:
                 logger.error(f"Failed to load progress state: {e}")
                 
+    def get_task_complexity_score(self, task_id: str) -> int:
+        """Get task complexity score from Task Master MCP or estimate it"""
+        try:
+            # Try to get complexity report from Task Master
+            complexity_report_path = Path(self.project_root) / "scripts" / "task-complexity-report.json"
+            
+            if complexity_report_path.exists():
+                with open(complexity_report_path, 'r') as f:
+                    report = json.load(f)
+                    
+                # Find task in report
+                for task in report.get("tasks", []):
+                    if str(task.get("id")) == str(task_id):
+                        complexity = task.get("complexity", {})
+                        score = complexity.get("score", 5)
+                        logger.info(f"Task {task_id} complexity score from report: {score}/10")
+                        return score
+            
+            # Default to medium complexity if not found
+            logger.info(f"No complexity score found for task {task_id}, using default: 5/10")
+            return 5
+            
+        except Exception as e:
+            logger.error(f"Error getting task complexity: {e}")
+            return 5  # Default to medium complexity
+    
     def process_task_with_mcp(self, task_id: str, subtask_id: Optional[str] = None):
         """Process task using Task Master MCP"""
         logger.info(f"Starting task processing: task_id={task_id}, subtask_id={subtask_id}")
         
+        # Get task complexity score
+        complexity_score = self.get_task_complexity_score(task_id)
+        
         # Update progress state
-        self.progress_state["current_task"] = {"id": task_id, "started_at": datetime.now().isoformat()}
+        self.progress_state["current_task"] = {"id": task_id, "started_at": datetime.now().isoformat(), "complexity": complexity_score}
         if subtask_id:
             self.progress_state["current_subtask"] = {"id": subtask_id, "started_at": datetime.now().isoformat()}
         self.save_progress_state()
@@ -254,7 +446,7 @@ Please start the implementation!
         # Send prompt to Claude
         logger.info("Sending task implementation request to Claude Desktop...")
         project_name = self.config.get("dev_project_name", "default")
-        if self.claude.run_automation(prompt, wait_for_continue=True, project_name=project_name):
+        if self.claude.run_automation(prompt, wait_for_continue=True, project_name=project_name, task_complexity=complexity_score):
             logger.info("Task implementation request sent successfully")
             
             # Wait for implementation completion (needs more time)
@@ -385,33 +577,58 @@ Please start the implementation!
             logger.error(f"Git commit failed: {e}")
             
     def run(self):
-        """Run the orchestrator"""
+        """Run the orchestrator with comprehensive error handling"""
         logger.info("Starting Enhanced Task Orchestrator")
         
-        # Load previous progress state
-        self.load_progress_state()
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
         
-        # Check current progress through Task Master MCP with initial prompt
-        logger.info("Sending initial prompt to Claude Desktop...")
-        initial_prompt = f"Use task-master MCP to check the progress status of tasks, and perform code modifications at {self.config.get('dev_project_path')} using JetBrains MCP. However, if task-master MCP is unavailable, read the task.json file containing prioritized tasks in the ./tasks directory under the project root and perform the work accordingly."
-        
-        project_name = self.config.get("dev_project_name", "default")
-        if self.claude.run_automation(initial_prompt, wait_for_continue=True, create_new_chat=True, project_name=project_name):
-            logger.info("Initial prompt sent successfully")
-            time.sleep(10)
-        else:
-            logger.error("Failed to send initial prompt")
-        
-        # Process tasks continuously
-        logger.info("Starting automatic task processing through Task Master MCP...")
-        
-        # Maximum tasks to process (prevent infinite loop)
-        max_tasks = self.config.get("max_tasks_per_run", 10)
-        processed_tasks = 0
-        
-        while processed_tasks < max_tasks:
-            # Prompt for checking next task
-            next_task_prompt = f"""Please check the next task to work on using Task Master MCP and implement it.
+        try:
+            # Load previous progress state
+            self.load_progress_state()
+            
+            # Check current progress through Task Master MCP with initial prompt
+            logger.info("Sending initial prompt to Claude Desktop...")
+            initial_prompt = f"Use task-master MCP to check the progress status of tasks, and perform code modifications at {self.config.get('dev_project_path')} using JetBrains MCP. However, if task-master MCP is unavailable, read the task.json file containing prioritized tasks in the ./tasks directory under the project root and perform the work accordingly."
+            
+            project_name = self.config.get("dev_project_name", "default")
+            try:
+                if self.claude.run_automation(initial_prompt, wait_for_continue=True, create_new_chat=True, project_name=project_name):
+                    logger.info("Initial prompt sent successfully")
+                    time.sleep(10)
+                else:
+                    logger.error("Failed to send initial prompt")
+            except Exception as e:
+                if "pyscreeze" in str(e).lower() or "pyautogui" in str(e).lower():
+                    logger.error("PyAutoGUI dependency error detected during initial prompt")
+                    if self._handle_pyautogui_error(e):
+                        logger.info("Dependency fix completed. Attempting to continue...")
+                        # Retry the initial prompt
+                        if self.claude.run_automation(initial_prompt, wait_for_continue=True, create_new_chat=True, project_name=project_name):
+                            logger.info("Initial prompt sent successfully after fix")
+                        else:
+                            logger.error("Initial prompt still failing after dependency fix")
+                            return False
+                    else:
+                        logger.error("Dependency fix failed. Cannot continue.")
+                        return False
+                else:
+                    self._handle_system_error(e, "Initial Prompt")
+                    raise
+            
+            # Process tasks continuously
+            logger.info("Starting automatic task processing through Task Master MCP...")
+            
+            # Maximum tasks to process (prevent infinite loop)
+            max_tasks = self.config.get("max_tasks_per_run", 10)
+            processed_tasks = 0
+            consecutive_failures = 0
+            max_consecutive_failures = 3
+            
+            while processed_tasks < max_tasks and consecutive_failures < max_consecutive_failures:
+                try:
+                    # Prompt for checking next task
+                    next_task_prompt = f"""Please check the next task to work on using Task Master MCP and implement it.
 
 Project path: {self.config.get('dev_project_path')}
 
@@ -430,32 +647,106 @@ Project path: {self.config.get('dev_project_path')}
 
 Note: When implementing tasks, please follow the complete process explained in previous messages.
 """
+                    
+                    logger.info(f"Checking and processing next task... ({processed_tasks + 1}/{max_tasks})")
+                    
+                    # Send prompt to Claude
+                    project_name = self.config.get("dev_project_name", "default")
+                    # Use higher complexity for next task checking (might involve analysis)
+                    if self.claude.run_automation(next_task_prompt, wait_for_continue=True, project_name=project_name, task_complexity=7):
+                        logger.info("Task processing request sent successfully")
+                        
+                        # Wait for completion - adjust based on recent task complexity
+                        wait_time = 30 if processed_tasks == 0 else 60  # Longer wait after first task
+                        time.sleep(wait_time)
+                        
+                        # TODO: Actually parse Claude's response to check for "ALL_TASKS_COMPLETED"
+                        # Currently just incrementing count
+                        processed_tasks += 1
+                        consecutive_failures = 0  # Reset failure counter on success
+                        
+                        # Save progress state
+                        self.save_progress_state()
+                        
+                    else:
+                        logger.error("Task processing request failed")
+                        consecutive_failures += 1
+                        if consecutive_failures >= max_consecutive_failures:
+                            logger.error(f"Too many consecutive failures ({consecutive_failures}). Stopping.")
+                            self._send_critical_error_notification(
+                                "Task Processing Failure",
+                                f"System failed {consecutive_failures} consecutive times during task processing",
+                                f"Consecutive failures: {consecutive_failures}/{max_consecutive_failures}\nProcessed tasks: {processed_tasks}/{max_tasks}"
+                            )
+                            break
+                        else:
+                            logger.warning(f"Failure {consecutive_failures}/{max_consecutive_failures}. Retrying...")
+                            time.sleep(10)  # Brief pause before retry
+                
+                except Exception as e:
+                    if "pyscreeze" in str(e).lower() or "pyautogui" in str(e).lower():
+                        logger.error("PyAutoGUI dependency error during task processing")
+                        if self._handle_pyautogui_error(e):
+                            logger.info("Dependency fix completed during task processing. Continuing...")
+                            consecutive_failures = 0  # Reset on successful fix
+                            continue
+                        else:
+                            logger.error("Dependency fix failed during task processing. Stopping.")
+                            break
+                    else:
+                        self._handle_system_error(e, "Task Processing Loop")
+                        consecutive_failures += 1
+                        if consecutive_failures >= max_consecutive_failures:
+                            logger.error("Too many errors during task processing. Stopping.")
+                            break
+                        else:
+                            logger.warning(f"Error {consecutive_failures}/{max_consecutive_failures}. Continuing...")
+                            time.sleep(5)
+                    
+            logger.info(f"Task processing complete: {processed_tasks} tasks processed")
             
-            logger.info(f"Checking and processing next task... ({processed_tasks + 1}/{max_tasks})")
+            # Send completion notification
+            try:
+                self.notification.send_notification(
+                    f"Task processing session completed. Processed {processed_tasks} tasks with {consecutive_failures} failures.",
+                    "🎉 Automation Session Complete",
+                    "info"
+                )
+            except:
+                pass
             
-            # Send prompt to Claude
-            project_name = self.config.get("dev_project_name", "default")
-            if self.claude.run_automation(next_task_prompt, wait_for_continue=True, project_name=project_name):
-                logger.info("Task processing request sent successfully")
-                
-                # Wait for completion
-                time.sleep(30)
-                
-                # TODO: Actually parse Claude's response to check for "ALL_TASKS_COMPLETED"
-                # Currently just incrementing count
-                processed_tasks += 1
-                
-                # Save progress state
-                self.save_progress_state()
-                
-            else:
-                logger.error("Task processing request failed")
-                break
-                
-        logger.info(f"Task processing complete: {processed_tasks} tasks processed")
-        
-        # Print final progress summary
-        self.print_progress_summary()
+            # Print final progress summary
+            self.print_progress_summary()
+            
+            return True
+            
+        except KeyboardInterrupt:
+            logger.info("Received keyboard interrupt. Shutting down gracefully...")
+            try:
+                self.notification.send_notification(
+                    "Automation system interrupted by user (Ctrl+C)",
+                    "🛑 Manual Shutdown",
+                    "warning"
+                )
+            except:
+                pass
+            return False
+            
+        except Exception as e:
+            self._handle_system_error(e, "Main Run Loop")
+            logger.error(f"Critical error in main run loop: {e}")
+            
+            # Send final error notification
+            try:
+                self._send_critical_error_notification(
+                    "Critical System Failure",
+                    str(e),
+                    f"System failed in main run loop at {datetime.now().isoformat()}\n\nException: {str(e)}\n\nTraceback: {traceback.format_exc()}"
+                )
+            except:
+                pass
+            
+            return False
         
     def print_progress_summary(self):
         """Print progress summary"""
@@ -479,28 +770,60 @@ Note: When implementing tasks, please follow the complete process explained in p
 
 
 def main():
-    """Main function"""
-    parser = argparse.ArgumentParser(description='Enhanced Task Orchestrator with Task Master MCP')
-    parser.add_argument('--config', type=str, default='config.json', help='Configuration file path')
-    parser.add_argument('--task', type=str, help='Run specific task only')
-    parser.add_argument('--subtask', type=str, help='Run specific subtask only')
-    parser.add_argument('--check-progress', action='store_true', help='Check progress only')
-    
-    args = parser.parse_args()
-    
-    # Create orchestrator
-    orchestrator = EnhancedTaskOrchestrator(args.config)
-    
-    if args.check_progress:
-        # Check progress only
-        orchestrator.check_task_master_progress()
-        orchestrator.print_progress_summary()
-    elif args.task:
-        # Run specific task only
-        orchestrator.process_task_with_mcp(args.task, args.subtask)
-    else:
-        # Run all
-        orchestrator.run()
+    """Main function with comprehensive error handling"""
+    try:
+        parser = argparse.ArgumentParser(description='Enhanced Task Orchestrator with Task Master MCP')
+        parser.add_argument('--config', type=str, default='config.json', help='Configuration file path')
+        parser.add_argument('--task', type=str, help='Run specific task only')
+        parser.add_argument('--subtask', type=str, help='Run specific subtask only')
+        parser.add_argument('--check-progress', action='store_true', help='Check progress only')
+        
+        args = parser.parse_args()
+        
+        # Create orchestrator
+        orchestrator = EnhancedTaskOrchestrator(args.config)
+        
+        if args.check_progress:
+            # Check progress only
+            orchestrator.check_task_master_progress()
+            orchestrator.print_progress_summary()
+        elif args.task:
+            # Run specific task only
+            success = orchestrator.process_task_with_mcp(args.task, args.subtask)
+            if not success:
+                logger.error(f"Task {args.task} processing failed")
+                sys.exit(1)
+        else:
+            # Run all
+            success = orchestrator.run()
+            if not success:
+                logger.error("Orchestrator run failed")
+                sys.exit(1)
+                
+    except KeyboardInterrupt:
+        logger.info("Program interrupted by user")
+        print("\nProgram interrupted by user")
+        sys.exit(130)  # Standard exit code for Ctrl+C
+        
+    except Exception as e:
+        logger.error(f"Unhandled exception in main: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Try to send emergency notification
+        try:
+            from notification_manager import NotificationManager
+            notifier = NotificationManager("notification_config.json")
+            notifier.send_notification(
+                f"**Unhandled Exception in Main Function**\n\nError: {str(e)}\n\nTraceback:\n```\n{traceback.format_exc()}\n```",
+                "🚨 Critical System Error",
+                "error"
+            )
+        except:
+            pass  # If notification fails, just continue with exit
+        
+        print(f"\nCritical error: {e}")
+        print("Check logs for details")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

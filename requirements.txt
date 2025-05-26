@@ -1,8 +1,17 @@
+# Core dependencies
 pyautogui==0.9.54
-opencv-python==4.10.0.84  # 최신 버전으로 업데이트
-numpy==1.26.4  # Python 3.12와 호환되는 버전
-pillow==10.4.0  # 최신 버전으로 업데이트
-requests==2.32.3  # 최신 버전으로 업데이트
-pytest==8.3.4  # 최신 버전으로 업데이트
+requests==2.32.3
+pytest==8.3.4
 setuptools>=42
 wheel
+
+# Image processing dependencies
+opencv-python==4.10.0.84  # For advanced image recognition
+pillow==10.4.0           # For screenshot and image manipulation (required for activity detection)
+numpy==1.26.4            # For image array operations (required for activity detection)
+
+# Optional dependencies for clipboard support
+# pyperclip==1.8.2       # Uncomment if you want clipboard support for long text input
+
+# Note: pillow and numpy are required for the enhanced activity detection feature.
+# Without these, the automation will still work but without screen activity monitoring.

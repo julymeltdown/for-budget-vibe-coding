@@ -4,11 +4,18 @@ import os
 import logging
 import argparse
 import json
-from typing import Optional
+from typing import Optional, Tuple
+from datetime import datetime, timedelta
 try:
     import pyperclip
 except ImportError:
     pyperclip = None
+try:
+    from PIL import ImageGrab
+    import numpy as np
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 
 # Create logs directory
 LOGS_DIR = "logs"
@@ -54,7 +61,15 @@ class ClaudeDesktopAutomation:
             "response_max_wait_s": 300,
             "response_check_interval_normal_s": 15,
             "response_check_interval_after_continue_s": 5,
-            "response_quick_check_duration_s": 60
+            "response_quick_check_duration_s": 60,
+            # Enhanced timeout settings
+            "dynamic_timeout_enabled": True,
+            "activity_detection_enabled": True,
+            "progressive_interval_enabled": True,
+            "max_wait_for_complex_tasks_s": 1800,  # 30 minutes for complex tasks
+            "activity_timeout_extension_s": 300,    # Extend by 5 minutes on activity
+            "max_check_interval_s": 60,            # Max interval between checks
+            "activity_detection_threshold": 0.02    # 2% pixel change threshold
         }
         
         self.config = self.default_config.copy()
@@ -98,6 +113,8 @@ class ClaudeDesktopAutomation:
         self._check_required_images()
         
         self.window_active = False
+        self.last_screenshot = None
+        self.task_complexity_score = 5  # Default complexity score
         logger.info("Claude Desktop automation initialization complete")
     
     def _check_required_images(self):
@@ -123,6 +140,11 @@ class ClaudeDesktopAutomation:
             logger.warning(f"The following image files/configs are missing: {', '.join(missing_images)}")
             logger.warning(f"Please add images to '{self.assets_dir}' or use --setup to capture them.")
             logger.warning(f"See {os.path.join(self.assets_dir, 'CAPTURE_GUIDE.md')} for details.")
+    
+    def set_task_complexity(self, complexity_score: int):
+        """Set task complexity score (1-10) to adjust timeouts accordingly"""
+        self.task_complexity_score = max(1, min(10, complexity_score))
+        logger.info(f"Task complexity set to: {self.task_complexity_score}/10")
     
     def activate_window(self):
         try:
@@ -177,6 +199,87 @@ class ClaudeDesktopAutomation:
         
         logger.error(f"Failed to find image (max retries exceeded): {image_path}")
         return False
+    
+    def _detect_screen_activity(self) -> bool:
+        """Detect if Claude is still actively working by checking screen changes"""
+        if not PIL_AVAILABLE:
+            logger.debug("PIL not available, activity detection disabled")
+            return False
+            
+        if not self.config.get("activity_detection_enabled", True):
+            return False
+            
+        try:
+            # Take screenshot
+            current_screenshot = ImageGrab.grab()
+            current_array = np.array(current_screenshot)
+            
+            if self.last_screenshot is not None:
+                # Calculate difference between screenshots
+                diff = np.abs(current_array.astype(float) - self.last_screenshot.astype(float))
+                change_ratio = np.sum(diff > 30) / diff.size  # Pixels with significant change
+                
+                logger.debug(f"Screen change ratio: {change_ratio:.4f}")
+                
+                # If change is above threshold, Claude is still working
+                if change_ratio > self.config.get("activity_detection_threshold", 0.02):
+                    logger.info("Activity detected - Claude is still working")
+                    self.last_screenshot = current_array
+                    return True
+            
+            self.last_screenshot = current_array
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error in activity detection: {e}")
+            return False
+    
+    def _calculate_check_interval(self, elapsed_time: int, base_interval: int) -> int:
+        """Calculate progressive check interval based on elapsed time"""
+        if not self.config.get("progressive_interval_enabled", True):
+            return base_interval
+            
+        # Progressive interval: increases as time passes
+        # First 5 minutes: base interval
+        # 5-15 minutes: 1.5x base interval
+        # 15-30 minutes: 2x base interval
+        # 30+ minutes: 3x base interval (capped at max_check_interval)
+        
+        if elapsed_time < 300:  # < 5 minutes
+            multiplier = 1.0
+        elif elapsed_time < 900:  # < 15 minutes
+            multiplier = 1.5
+        elif elapsed_time < 1800:  # < 30 minutes
+            multiplier = 2.0
+        else:
+            multiplier = 3.0
+            
+        interval = int(base_interval * multiplier)
+        max_interval = self.config.get("max_check_interval_s", 60)
+        
+        return min(interval, max_interval)
+    
+    def _calculate_dynamic_timeout(self) -> int:
+        """Calculate dynamic timeout based on task complexity"""
+        base_timeout = self.config.get("response_max_wait_s", 300)
+        complex_timeout = self.config.get("max_wait_for_complex_tasks_s", 1800)
+        
+        if not self.config.get("dynamic_timeout_enabled", True):
+            return base_timeout
+            
+        # Linear interpolation based on complexity score (1-10)
+        # Score 1-3: base timeout
+        # Score 4-7: interpolated
+        # Score 8-10: complex timeout
+        
+        if self.task_complexity_score <= 3:
+            return base_timeout
+        elif self.task_complexity_score >= 8:
+            return complex_timeout
+        else:
+            # Linear interpolation
+            ratio = (self.task_complexity_score - 3) / 5.0
+            return int(base_timeout + (complex_timeout - base_timeout) * ratio)
     
     def capture_and_save_button(self, button_name_key, image_file_name, prompt_message):
         """
@@ -344,26 +447,31 @@ class ClaudeDesktopAutomation:
     
     def _wait_for_response_core(self, project_name_for_new_chat: str, wait_for_continue_flag: bool) -> str:
         """
-        Core logic for waiting for Claude's response.
-        Handles 'Continue', 'Max Length', and 'Usage Limit' messages.
+        Enhanced core logic for waiting for Claude's response with dynamic timeout and activity detection.
         Returns a status string: "success", "usage_limit_reached", "max_length_handled", "timeout", "failure".
         """
         logger.info("Waiting for Claude's response...")
         
+        # Calculate dynamic timeout based on task complexity
+        max_wait_total = self._calculate_dynamic_timeout()
+        logger.info(f"Dynamic timeout set to {max_wait_total}s based on task complexity: {self.task_complexity_score}/10")
+        
         # Timing parameters from config
         initial_wait = self.config.get("response_initial_wait_s", 30)
-        max_wait_total = self.config.get("response_max_wait_s", 300)
         check_interval_normal = self.config.get("response_check_interval_normal_s", 15)
         check_interval_after_continue = self.config.get("response_check_interval_after_continue_s", 5)
         quick_check_duration_after_continue = self.config.get("response_quick_check_duration_s", 60)
+        activity_extension = self.config.get("activity_timeout_extension_s", 300)
 
         time.sleep(initial_wait)
         elapsed_time = initial_wait
         
         last_continue_click_time = 0
         continue_clicked_this_cycle = False
+        last_activity_time = elapsed_time
+        extended_timeout = max_wait_total
 
-        while elapsed_time < max_wait_total:
+        while elapsed_time < extended_timeout:
             # 1. Check for Usage Limit (highest priority)
             if self.check_usage_limit_message():
                 logger.warning("Usage limit message detected on screen.")
@@ -388,18 +496,45 @@ class ClaudeDesktopAutomation:
                     logger.info("'Continue' button clicked.")
                     continue_clicked_this_cycle = True
                     last_continue_click_time = elapsed_time
+                    # Reset activity detection after continue click
+                    self.last_screenshot = None
                 elif continue_clicked_this_cycle:
                     logger.info("Response generation appears complete after 'Continue' button.")
                     return "success"
             
-            current_interval = check_interval_after_continue \
-                               if continue_clicked_this_cycle and (elapsed_time - last_continue_click_time < quick_check_duration_after_continue) \
-                               else check_interval_normal
+            # 4. Activity detection - check if Claude is still working
+            if self._detect_screen_activity():
+                last_activity_time = elapsed_time
+                # Extend timeout if activity detected and we're close to timeout
+                if elapsed_time > extended_timeout * 0.8:  # Within 80% of timeout
+                    extended_timeout = min(
+                        elapsed_time + activity_extension,
+                        max_wait_total * 2  # Never exceed 2x original timeout
+                    )
+                    logger.info(f"Activity detected - extending timeout to {extended_timeout}s")
+            
+            # Calculate progressive check interval
+            base_interval = check_interval_after_continue \
+                           if continue_clicked_this_cycle and (elapsed_time - last_continue_click_time < quick_check_duration_after_continue) \
+                           else check_interval_normal
+            
+            current_interval = self._calculate_check_interval(elapsed_time, base_interval)
+            
+            # Log progress every 5 checks or every 5 minutes
+            if elapsed_time % 300 < current_interval:
+                progress_pct = (elapsed_time / extended_timeout) * 100
+                logger.info(f"Progress: {elapsed_time}s / {extended_timeout}s ({progress_pct:.1f}%) - "
+                          f"Last activity: {elapsed_time - last_activity_time}s ago")
             
             logger.debug(f"Waiting for {current_interval}s... (Total elapsed: {elapsed_time}s)")
             time.sleep(current_interval)
             elapsed_time += current_interval
 
+        # Check if we should consider it successful based on activity
+        if last_activity_time > extended_timeout * 0.9:  # Activity in last 10% of time
+            logger.info("Recent activity detected - assuming task completion")
+            return "success"
+            
         if not wait_for_continue_flag and not continue_clicked_this_cycle:
             logger.info("Short prompt response assumed complete.")
             return "success"
@@ -408,7 +543,7 @@ class ClaudeDesktopAutomation:
             logger.info("Response generation complete (final 'Continue' button likely processed).")
             return "success"
 
-        logger.warning(f"Response timeout after {max_wait_total} seconds.")
+        logger.warning(f"Response timeout after {extended_timeout} seconds (no recent activity for {elapsed_time - last_activity_time}s).")
         return "timeout"
     
     def setup_buttons(self):
@@ -460,13 +595,18 @@ class ClaudeDesktopAutomation:
         logger.info("Button image setup complete.")
         logger.info(f"Images saved in {self.assets_dir}.")
     
-    def run_automation(self, input_text_content: str, wait_for_continue: bool = True, create_new_chat: bool = False, project_name: Optional[str] = None):
+    def run_automation(self, input_text_content: str, wait_for_continue: bool = True, create_new_chat: bool = False, 
+                      project_name: Optional[str] = None, task_complexity: Optional[int] = None):
         if not self.activate_window():
             return False
 
         if not project_name:
             logger.error("Project name is required for Claude Desktop automation.")
             return False
+
+        # Set task complexity if provided
+        if task_complexity is not None:
+            self.set_task_complexity(task_complexity)
 
         max_usage_limit_retries = 1
         usage_limit_retry_count = 0
@@ -536,6 +676,7 @@ def main():
     parser.add_argument('--input', type=str, help='Text to input or text file path')
     parser.add_argument('--wait-continue', action='store_true', help="Wait for and click 'Continue' button (for long responses)")
     parser.add_argument('--new-chat', action='store_true', help='Create new chat before inputting prompt')
+    parser.add_argument('--task-complexity', type=int, choices=range(1, 11), help='Task complexity score (1-10) for dynamic timeout')
     
     args = parser.parse_args()
     
@@ -586,7 +727,8 @@ def main():
         input_text_content=input_text_content,
         wait_for_continue=args.wait_continue,
         create_new_chat=args.new_chat,
-        project_name=args.project_name
+        project_name=args.project_name,
+        task_complexity=args.task_complexity
     )
 
     if success:

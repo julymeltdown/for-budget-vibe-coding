@@ -14,5 +14,17 @@
   "max_length_message_image": "max_length_message.png",
   "usage_limit_message_image": "usage_limit_message.png",
   "usage_limit_wait_hours": 2,
-  "debug_usage_limit_wait_seconds": 10
+  "debug_usage_limit_wait_seconds": 10,
+  "response_initial_wait_s": 30,
+  "response_max_wait_s": 300,
+  "response_check_interval_normal_s": 15,
+  "response_check_interval_after_continue_s": 5,
+  "response_quick_check_duration_s": 60,
+  "dynamic_timeout_enabled": true,
+  "activity_detection_enabled": true,
+  "progressive_interval_enabled": true,
+  "max_wait_for_complex_tasks_s": 1800,
+  "activity_timeout_extension_s": 300,
+  "max_check_interval_s": 60,
+  "activity_detection_threshold": 0.02
 }
