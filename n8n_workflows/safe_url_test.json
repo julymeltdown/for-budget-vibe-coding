@@ -1,0 +1,148 @@
+{
+  "name": "Safe URL Construction Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "safe-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "task_id",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "id": "safe-set-task-id",
+      "name": "Set Task ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "api_url",
+              "value": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + $json.task_id}}"
+            },
+            {
+              "name": "task_id",
+              "value": "={{$json.task_id}}"
+            }
+          ]
+        }
+      },
+      "id": "safe-build-url",
+      "name": "Build URL",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = $input.first().json;\nconsole.log('=== URL CONSTRUCTION TEST ===');\nconsole.log('Input data:', JSON.stringify(data, null, 2));\nconsole.log('Task ID:', data.task_id);\nconsole.log('Constructed URL:', data.api_url);\n\nreturn [$input.first()];"
+      },
+      "id": "safe-debug-url",
+      "name": "Debug URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$json.api_url}}",
+        "options": {}
+      },
+      "id": "safe-api-call",
+      "name": "API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.first().json;\nconst urlData = $node['Build URL'].json;\n\nconsole.log('=== API CALL RESULT ===');\nconsole.log('Used URL:', urlData.api_url);\nconsole.log('API Response:', JSON.stringify(response, null, 2));\n\nif (response && response.success) {\n  console.log('✅ SUCCESS! Task found:', response.task.name);\n} else {\n  console.log('❌ FAILED! Error:', response.error || 'Unknown error');\n}\n\nreturn [$input.first()];"
+      },
+      "id": "safe-final-result",
+      "name": "Final Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1140, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set Task ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Task ID": {
+      "main": [
+        [
+          {
+            "node": "Build URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build URL": {
+      "main": [
+        [
+          {
+            "node": "Debug URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug URL": {
+      "main": [
+        [
+          {
+            "node": "API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Call": {
+      "main": [
+        [
+          {
+            "node": "Final Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "safe-url-001",
+  "id": "safe-url-test",
+  "meta": {
+    "instanceId": "n8n-safe-url-test"
+  },
+  "tags": []
+}

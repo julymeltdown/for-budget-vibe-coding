@@ -1,0 +1,120 @@
+{
+  "name": "Step by Step Variable Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "step-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "task_id",
+              "value": "1"
+            },
+            {
+              "name": "task_name",
+              "value": "Test Task"
+            }
+          ]
+        }
+      },
+      "id": "step-set-vars",
+      "name": "Set Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Test variable access\nconst data = $input.first().json;\nconsole.log('=== VARIABLE TEST ===');\nconsole.log('Full data object:', JSON.stringify(data, null, 2));\nconsole.log('task_id value:', data.task_id);\nconsole.log('task_id type:', typeof data.task_id);\nconsole.log('task_name value:', data.task_name);\n\n// Test different ways to access the variable\nconsole.log('Using $json.task_id:', $json.task_id);\nconsole.log('Using data.task_id:', data.task_id);\n\n// Create URL manually\nconst baseUrl = 'http://host.docker.internal:5003/api/taskmaster/show/';\nconst taskId = data.task_id || '1';\nconst fullUrl = baseUrl + taskId;\n\nconsole.log('Base URL:', baseUrl);\nconsole.log('Task ID:', taskId);\nconsole.log('Full URL:', fullUrl);\n\nreturn [{\n  json: {\n    task_id: taskId,\n    task_name: data.task_name,\n    constructed_url: fullUrl,\n    debug: 'variables_processed'\n  }\n}];"
+      },
+      "id": "step-test-vars",
+      "name": "Test Variables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://host.docker.internal:5003/api/taskmaster/show/{{$json.task_id}}",
+        "options": {}
+      },
+      "id": "step-api-call",
+      "name": "API Call with Variable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.first().json;\nconst testData = $node['Test Variables'].json;\n\nconsole.log('=== FINAL RESULT ===');\nconsole.log('Test data task_id:', testData.task_id);\nconsole.log('Test data constructed_url:', testData.constructed_url);\nconsole.log('API response:', JSON.stringify(response, null, 2));\n\nif (response && response.success) {\n  console.log('✅ SUCCESS!');\n} else {\n  console.log('❌ FAILED!');\n  console.log('Error:', response.error);\n}\n\nreturn [$input.first()];"
+      },
+      "id": "step-final-debug",
+      "name": "Final Debug",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Variables": {
+      "main": [
+        [
+          {
+            "node": "Test Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Variables": {
+      "main": [
+        [
+          {
+            "node": "API Call with Variable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Call with Variable": {
+      "main": [
+        [
+          {
+            "node": "Final Debug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "step-by-step-001",
+  "id": "step-by-step-test",
+  "meta": {
+    "instanceId": "n8n-step-by-step-test"
+  },
+  "tags": []
+}

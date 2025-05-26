@@ -139,6 +139,35 @@ To run the workflow on a schedule:
    - Check if required button images are captured
    - Verify project name matches exactly
 
+4. **"Code doesn't return items properly" errors**
+   - Check JavaScript code in Code nodes
+   - Ensure proper item structure is returned
+   - Use the fixed code from `fixed_process_tasks_code.js`
+
+### JavaScript Code Issues
+
+If you encounter "Code doesn't return items properly" in n8n Code nodes:
+
+**❌ Incorrect (causes errors):**
+```javascript
+for (const item of $input.all()) {
+  item.json.myNewField = 1;  // Direct modification
+}
+return $input.all();  // Returns modified original
+```
+
+**✅ Correct (works properly):**
+```javascript
+return $input.all().map(item => ({
+  json: {
+    ...item.json,  // Preserve original data
+    myNewField: 1  // Add new field
+  }
+}));
+```
+
+See `fixed_process_tasks_code.js` for complete examples.
+
 ### Debug Mode
 
 To enable debug logging:

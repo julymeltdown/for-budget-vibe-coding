@@ -9,7 +9,7 @@ services:
       - "5678:5678" # n8n web interface port
     environment:
       - GENERIC_TIMEZONE=Asia/Seoul
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your_secret_encryption_key_here}
+      # - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your_secret_encryption_key_here}  # 암호화 키 불일치 문제로 주석처리
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_PROTOCOL=http

@@ -14,6 +14,18 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import subprocess
 
+# Add current directory to Python path for imports
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import Task Master functionality - with error handling
+try:
+    from task_master_wrapper import TaskMasterWrapper
+    TASKMASTER_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"TaskMasterWrapper not available: {e}")
+    TASKMASTER_AVAILABLE = False
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for web dashboard access
@@ -424,6 +436,319 @@ def stop_orchestrator():
     except Exception as e:
         logger.error(f"Error stopping orchestrator: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+# Task Master Integration Endpoints (Direct implementation)
+
+@app.route('/api/taskmaster/show/<string:task_id>', methods=['GET'])
+def taskmaster_show_task(task_id: str):
+    """Get detailed task information via Task Master"""
+    try:
+        # Read tasks data directly
+        tasks_data = read_json_file(TASKS_FILE, {"tasks": []})
+        
+        # Find the task
+        for task in tasks_data.get("tasks", []):
+            if str(task.get("id")) == task_id:
+                # Format the output similar to task_master_wrapper.py show command
+                status_emoji = {
+                    "pending": "⏳",
+                    "in_progress": "🔄", 
+                    "completed": "✅",
+                    "failed": "❌"
+                }.get(task.get("status", "pending"), "❓")
+                
+                result = {
+                    "task_id": task_id,
+                    "name": task.get("name", "Unnamed Task"),
+                    "description": task.get("description", ""),
+                    "status": task.get("status", "pending"),
+                    "status_emoji": status_emoji,
+                    "priority": task.get("priority", "medium"),
+                    "subtasks": task.get("subtasks", []),
+                    "started_at": task.get("started_at"),
+                    "completed_at": task.get("completed_at"),
+                    "created_at": task.get("created_at"),
+                    "updated_at": task.get("updated_at")
+                }
+                
+                # Add subtask progress
+                subtasks = task.get("subtasks", [])
+                if subtasks:
+                    completed_subtasks = sum(1 for st in subtasks if st.get("status") == "completed")
+                    result["subtask_progress"] = {
+                        "total": len(subtasks),
+                        "completed": completed_subtasks,
+                        "percentage": (completed_subtasks / len(subtasks) * 100) if subtasks else 0
+                    }
+                
+                return jsonify({
+                    "success": True,
+                    "task": result,
+                    "stdout": f"Task {task_id}: {task.get('name', 'Unnamed Task')}\nStatus: {task.get('status', 'pending')}\nDescription: {task.get('description', '')}"
+                })
+        
+        return jsonify({
+            "success": False,
+            "error": f"Task '{task_id}' not found",
+            "stdout": f"Error: Task '{task_id}' not found"
+        }), 404
+        
+    except Exception as e:
+        logger.error(f"Error in taskmaster show: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "stdout": f"Error: {str(e)}"
+        }), 500
+
+@app.route('/api/taskmaster/list', methods=['GET'])
+def taskmaster_list_tasks():
+    """List all tasks via Task Master"""
+    try:
+        # Read tasks data directly
+        tasks_data = read_json_file(TASKS_FILE, {"tasks": []})
+        status_filter = request.args.get('status')
+        show_details = request.args.get('details', 'false').lower() == 'true'
+        
+        tasks = []
+        for task in tasks_data.get("tasks", []):
+            if status_filter and task.get("status") != status_filter:
+                continue
+                
+            status_emoji = {
+                "pending": "⏳",
+                "in_progress": "🔄",
+                "completed": "✅", 
+                "failed": "❌"
+            }.get(task.get("status", "pending"), "❓")
+            
+            task_info = {
+                "id": task["id"],
+                "name": task.get("name", "Unnamed Task"),
+                "status": task.get("status", "pending"),
+                "status_emoji": status_emoji,
+                "priority": task.get("priority", "medium")
+            }
+            
+            if show_details:
+                task_info["description"] = task.get("description", "")
+                task_info["started_at"] = task.get("started_at")
+                task_info["completed_at"] = task.get("completed_at")
+            
+            # Subtask information
+            subtasks = task.get("subtasks", [])
+            if subtasks:
+                completed_subtasks = sum(1 for st in subtasks if st.get("status") == "completed")
+                task_info["subtasks"] = {
+                    "total": len(subtasks),
+                    "completed": completed_subtasks,
+                    "percentage": (completed_subtasks / len(subtasks) * 100) if subtasks else 0
+                }
+                
+                if show_details:
+                    task_info["subtask_details"] = subtasks
+            
+            tasks.append(task_info)
+        
+        return jsonify({
+            "success": True,
+            "tasks": tasks,
+            "total": len(tasks)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in taskmaster list: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/taskmaster/status', methods=['GET'])
+def taskmaster_project_status():
+    """Get project progress status via Task Master"""
+    try:
+        # Read tasks data directly
+        tasks_data = read_json_file(TASKS_FILE, {"tasks": []})
+        
+        total_tasks = len(tasks_data.get("tasks", []))
+        if total_tasks == 0:
+            return jsonify({
+                "success": True,
+                "message": "No tasks registered",
+                "stats": {
+                    "total_tasks": 0,
+                    "progress": 0
+                }
+            })
+        
+        # Calculate statistics
+        status_counts = {
+            "pending": 0,
+            "in_progress": 0, 
+            "completed": 0,
+            "failed": 0
+        }
+        
+        total_subtasks = 0
+        completed_subtasks = 0
+        
+        for task in tasks_data.get("tasks", []):
+            status = task.get("status", "pending")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+            subtasks = task.get("subtasks", [])
+            total_subtasks += len(subtasks)
+            completed_subtasks += sum(1 for st in subtasks if st.get("status") == "completed")
+        
+        # Calculate progress
+        completed_tasks = status_counts["completed"]
+        task_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        subtask_progress = (completed_subtasks / total_subtasks * 100) if total_subtasks > 0 else 0
+        
+        stats = {
+            "total_tasks": total_tasks,
+            "task_counts": status_counts,
+            "task_progress": round(task_progress, 1),
+            "total_subtasks": total_subtasks,
+            "completed_subtasks": completed_subtasks,
+            "subtask_progress": round(subtask_progress, 1)
+        }
+        
+        # Add test history if available
+        test_history_file = PROJECT_ROOT / "logs" / "test_history.json"
+        if test_history_file.exists():
+            try:
+                test_history = read_json_file(test_history_file, {})
+                stats["test_stats"] = {
+                    "total_runs": test_history.get("total_runs", 0),
+                    "total_passes": test_history.get("total_passes", 0),
+                    "total_failures": test_history.get("total_failures", 0),
+                    "last_run": test_history.get("last_run")
+                }
+            except Exception:
+                pass
+        
+        return jsonify({
+            "success": True,
+            "stats": stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in taskmaster status: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/taskmaster/reset', methods=['POST'])
+def taskmaster_reset_task():
+    """Reset task status via Task Master"""
+    try:
+        data = request.get_json() or {}
+        task_id = data.get('task_id')
+        subtask_id = data.get('subtask_id')
+        
+        # Read tasks data directly
+        tasks_data = read_json_file(TASKS_FILE, {"tasks": []})
+        
+        task_found = False
+        for task in tasks_data.get("tasks", []):
+            if str(task.get("id")) == str(task_id):
+                if subtask_id:
+                    # Reset specific subtask
+                    for subtask in task.get("subtasks", []):
+                        if str(subtask.get("id")) == str(subtask_id):
+                            subtask["status"] = "pending"
+                            subtask["failure_count"] = 0
+                            task_found = True
+                            break
+                else:
+                    # Reset entire task
+                    task["status"] = "pending"
+                    task["failure_count"] = 0
+                    task.pop("started_at", None)
+                    task.pop("completed_at", None)
+                    
+                    # Reset all subtasks too
+                    for subtask in task.get("subtasks", []):
+                        subtask["status"] = "pending"
+                        subtask["failure_count"] = 0
+                    
+                    task_found = True
+                break
+        
+        if task_found:
+            # Save the updated data
+            if write_json_file(TASKS_FILE, tasks_data):
+                return jsonify({
+                    "success": True,
+                    "message": f"Reset {'subtask' if subtask_id else 'task'} status successfully"
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to save updated task data"
+                }), 500
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Task {'subtask' if subtask_id else 'task'} not found"
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error in taskmaster reset: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/taskmaster/run-tests', methods=['POST'])
+def taskmaster_run_tests():
+    """Run tests for a specific task"""
+    try:
+        data = request.get_json() or {}
+        task_id = data.get('task_id')
+        
+        if not task_id:
+            return jsonify({
+                "success": False,
+                "error": "task_id is required"
+            }), 400
+        
+        # Simple test simulation - replace with actual test execution
+        # For now, just return a mock success result
+        return jsonify({
+            "success": True,
+            "exit_code": 0,
+            "stdout": f"Mock test execution for task {task_id} completed successfully",
+            "stderr": "",
+            "task_id": task_id,
+            "note": "This is a mock implementation. Replace with actual test execution."
+        })
+        
+    except Exception as e:
+        logger.error(f"Error running tests for task {task_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "task_id": task_id
+        }), 500
+
+# Add debug route to list all registered routes
+@app.route('/api/debug/routes', methods=['GET'])
+def debug_routes():
+    """Debug endpoint to list all registered routes"""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'rule': str(rule)
+        })
+    return jsonify({
+        "routes": routes,
+        "total": len(routes)
+    })
 
 # Error handlers
 

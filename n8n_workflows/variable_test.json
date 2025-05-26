@@ -1,0 +1,121 @@
+{
+  "name": "Variable Passing Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "var-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "task_id",
+              "value": "1"
+            },
+            {
+              "name": "test_value",
+              "value": "hello_world"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "var-set",
+      "name": "Set Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Check what data we have\nconst input = $input.first().json;\n\nconsole.log('=== STEP 1: SET VARIABLES OUTPUT ===');\nconsole.log('Full input:', JSON.stringify(input, null, 2));\nconsole.log('task_id:', input.task_id);\nconsole.log('test_value:', input.test_value);\nconsole.log('task_id type:', typeof input.task_id);\n\n// Pass through the data\nreturn [{\n  json: {\n    task_id: input.task_id,\n    test_value: input.test_value,\n    step: 'processed_by_code_node'\n  }\n}];"
+      },
+      "id": "var-process",
+      "name": "Process Variables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [560, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + $json.task_id}}",
+        "options": {}
+      },
+      "id": "var-api-call",
+      "name": "API Call with Variable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Final check\nconst apiResponse = $input.first().json;\nconst processData = $node[\"Process Variables\"].json;\nconst setData = $node[\"Set Variables\"].json;\n\nconsole.log('=== STEP 4: FINAL RESULTS ===');\nconsole.log('Original Set Variables data:', JSON.stringify(setData, null, 2));\nconsole.log('Process Variables data:', JSON.stringify(processData, null, 2));\nconsole.log('API Response:', JSON.stringify(apiResponse, null, 2));\n\nconsole.log('task_id from Set Variables:', setData.task_id);\nconsole.log('task_id from Process Variables:', processData.task_id);\n\nif (apiResponse && apiResponse.success) {\n  console.log('✅ SUCCESS: Variable passing worked!');\n  console.log('Retrieved task name:', apiResponse.task.name);\n} else {\n  console.log('❌ FAILED: Variable passing failed');\n  console.log('Error:', apiResponse.error);\n}\n\nreturn [$input.first()];"
+      },
+      "id": "var-final",
+      "name": "Final Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Variables": {
+      "main": [
+        [
+          {
+            "node": "Process Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Variables": {
+      "main": [
+        [
+          {
+            "node": "API Call with Variable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Call with Variable": {
+      "main": [
+        [
+          {
+            "node": "Final Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "variable-test-001",
+  "id": "variable-test",
+  "meta": {
+    "instanceId": "n8n-variable-test"
+  },
+  "tags": []
+}

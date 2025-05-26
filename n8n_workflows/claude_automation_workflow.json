@@ -12,7 +12,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://host.docker.internal:5002/api/tasks",
+        "url": "http://host.docker.internal:5003/api/tasks",
         "options": {
           "queryParameters": {
             "parameters": [
@@ -32,7 +32,7 @@
     },
     {
       "parameters": {
-        "functionCode": "// Extract task information and prepare for processing\nconst tasks = $input.first().json.tasks;\n\nif (!tasks || tasks.length === 0) {\n  return [{\n    json: {\n      message: \"No pending tasks found\",\n      tasks: []\n    }\n  }];\n}\n\n// Process each task\nreturn tasks.map(task => ({\n  json: {\n    task_id: task.id,\n    task_name: task.name,\n    task_description: task.description,\n    priority: task.priority,\n    subtasks: task.subtasks || []\n  }\n}));"
+        "functionCode": "// Extract task information and prepare for processing\nconst inputData = $input.first().json;\nconst tasks = inputData.tasks || [];\n\nconsole.log('Input data:', JSON.stringify(inputData, null, 2));\nconsole.log('Tasks found:', tasks.length);\n\nif (!tasks || tasks.length === 0) {\n  return [{\n    json: {\n      message: \"No pending tasks found\",\n      tasks: [],\n      processed: false\n    }\n  }];\n}\n\n// Process each task with proper item structure\nconst processedItems = tasks.map((task, index) => {\n  console.log(`Processing task ${index}:`, JSON.stringify(task, null, 2));\n  \n  const taskId = task.id || task.task_id || String(index + 1);\n  const taskName = task.name || task.task_name || `Task ${taskId}`;\n  const taskDescription = task.description || task.task_description || '';\n  \n  console.log(`Mapped task ID: ${taskId}, Name: ${taskName}`);\n  \n  return {\n    json: {\n      task_id: String(taskId),  // Ensure it's a string\n      task_name: taskName,\n      task_description: taskDescription,\n      priority: task.priority || 'medium',\n      subtasks: task.subtasks || [],\n      processed: true,\n      timestamp: new Date().toISOString(),\n      original_task: task  // Keep original for debugging\n    }\n  };\n});\n\nconsole.log('Processed items:', processedItems.length);\nconsole.log('First processed item:', JSON.stringify(processedItems[0], null, 2));\n\nreturn processedItems;"
       },
       "id": "6cae9faf-3456-789a-bcde-f01234567890",
       "name": "Process Tasks",
@@ -42,17 +42,19 @@
     },
     {
       "parameters": {
-        "command": "python /project/task_master_wrapper.py show --task {{$json.task_id}}"
+        "method": "GET",
+        "url": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + ($json.task_id || '1')}}",
+        "options": {}
       },
       "id": "7dbf0fb0-4567-89ab-cdef-012345678901",
       "name": "Get Task Details",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
       "position": [850, 300]
     },
     {
       "parameters": {
-        "functionCode": "// Prepare Claude prompt based on task details\nconst taskDetails = $input.first().json;\nconst taskId = $node[\"Process Tasks\"].json.task_id;\nconst taskName = $node[\"Process Tasks\"].json.task_name;\n\n// Create a comprehensive prompt\nconst prompt = `Task ID: ${taskId}\nTask Name: ${taskName}\n\nPlease implement the following task:\n${taskDetails.stdout || taskDetails}\n\nRequirements:\n1. Follow best practices and coding standards\n2. Include error handling\n3. Add appropriate comments\n4. Create tests if applicable\n\nPlease implement this task step by step.`;\n\nreturn [{\n  json: {\n    task_id: taskId,\n    prompt: prompt,\n    project_name: \"automation-project\",\n    wait_for_continue: true,\n    create_new_chat: false\n  }\n}];"
+        "functionCode": "// Prepare Claude prompt based on task details\nconst currentItem = $input.first();\nconst taskDetails = currentItem.json;\nconst processTasksData = $node[\"Process Tasks\"].json;\n\nconsole.log('=== PREPARE CLAUDE PROMPT DEBUG ===');\nconsole.log('Current item:', JSON.stringify(currentItem, null, 2));\nconsole.log('Task details:', JSON.stringify(taskDetails, null, 2));\nconsole.log('Process Tasks data:', JSON.stringify(processTasksData, null, 2));\n\nconst taskId = processTasksData.task_id;\nconst taskName = processTasksData.task_name;\nconst taskDescription = processTasksData.task_description;\n\n// Validate task_id exists\nif (!taskId) {\n  console.error('❌ task_id is missing from Process Tasks output');\n  throw new Error('task_id is missing from Process Tasks output');\n}\n\nconsole.log('✅ Processing task ID:', taskId);\nconsole.log('✅ Task name:', taskName);\n\n// Create a comprehensive prompt\nconst prompt = `Task ID: ${taskId}\nTask Name: ${taskName}\nDescription: ${taskDescription}\n\nTask Details:\n${taskDetails.stdout || JSON.stringify(taskDetails, null, 2)}\n\nRequirements:\n1. Follow best practices and coding standards\n2. Include proper error handling\n3. Add appropriate comments and documentation\n4. Create tests if applicable\n5. Use the Task Master MCP tools for project management\n\nPlease implement this task step by step using the available MCP tools.`;\n\n// Return properly structured item with validated data\nconst result = {\n  json: {\n    task_id: String(taskId),  // Ensure it's a string\n    task_name: taskName || 'Unknown Task',\n    prompt: prompt,\n    project_name: \"automation-project\",\n    wait_for_continue: true,\n    create_new_chat: false,\n    timestamp: new Date().toISOString(),\n    prepared: true\n  }\n};\n\nconsole.log('=== PREPARE CLAUDE PROMPT RESULT ===');\nconsole.log('Result to return:', JSON.stringify(result, null, 2));\n\nreturn [result];"
       },
       "id": "8ec01fc1-5678-9abc-def0-123456789012",
       "name": "Prepare Claude Prompt",
@@ -63,28 +65,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:5001/api/automation/run",
+        "url": "http://host.docker.internal:5003/api/automation/run",
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "prompt",
-              "value": "={{$json.prompt}}"
-            },
-            {
-              "name": "wait_for_continue",
-              "value": "={{$json.wait_for_continue}}"
-            },
-            {
-              "name": "create_new_chat",
-              "value": "={{$json.create_new_chat}}"
-            },
-            {
-              "name": "project_name",
-              "value": "={{$json.project_name}}"
-            }
-          ]
-        },
+        "bodyContentType": "json",
+        "jsonBody": "={{ {\n  \"prompt\": $json.prompt || \"Default prompt\",\n  \"wait_for_continue\": $json.wait_for_continue || true,\n  \"create_new_chat\": $json.create_new_chat || false,\n  \"project_name\": $json.project_name || \"automation-project\"\n} }}",
         "options": {}
       },
       "id": "9fd12fd2-6789-abcd-ef01-234567890123",
@@ -107,7 +91,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://host.docker.internal:5001/api/automation/status/{{$node[\"Trigger Claude Automation\"].json.task_id}}",
+        "url": "http://host.docker.internal:5003/api/automation/status/{{$node[\"Trigger Claude Automation\"].json.task_id}}",
         "options": {}
       },
       "id": "b1f34ff4-89ab-cdef-0123-456789012345",
@@ -136,22 +120,44 @@
     },
     {
       "parameters": {
-        "command": "python /project/task_orchestrator_enhanced.py --run-tests --task {{$node[\"Process Tasks\"].json.task_id}}"
+        "method": "POST",
+        "url": "http://host.docker.internal:5003/api/taskmaster/run-tests",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "task_id",
+              "value": "={{$node[\"Process Tasks\"].json.task_id}}"
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "d3156116-abcd-ef01-2345-678901234567",
       "name": "Run Tests",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
       "position": [2050, 200]
     },
     {
       "parameters": {
-        "command": "python /project/task_master_wrapper.py set-status --id {{$node[\"Process Tasks\"].json.task_id}} --status done"
+        "method": "PUT", 
+        "url": "={{\"http://host.docker.internal:5003/api/tasks/\" + $node[\"Process Tasks\"].json.task_id + \"/status\"}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "done"
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "e4267227-bcde-f012-3456-789012345678",
       "name": "Update Task Status",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
       "position": [2250, 200]
     },
     {

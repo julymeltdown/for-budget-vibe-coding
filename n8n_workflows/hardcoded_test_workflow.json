@@ -1,0 +1,67 @@
+{
+  "name": "Hardcoded Test - No Variables",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "hardcoded-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5003/api/taskmaster/show/1",
+        "options": {}
+      },
+      "id": "hardcoded-request",
+      "name": "Direct API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.first().json;\nconsole.log('Direct API call result:', JSON.stringify(response, null, 2));\nreturn [$input.first()];"
+      },
+      "id": "hardcoded-debug",
+      "name": "Show Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Direct API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Direct API Call": {
+      "main": [
+        [
+          {
+            "node": "Show Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "hardcoded-001",
+  "id": "hardcoded-test",
+  "meta": {
+    "instanceId": "n8n-hardcoded-test"
+  },
+  "tags": []
+}

@@ -1,0 +1,120 @@
+{
+  "name": "Debug Task Flow Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "debug-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5003/api/tasks",
+        "options": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "status",
+                "value": "pending"
+              }
+            ]
+          }
+        }
+      },
+      "id": "debug-get-tasks",
+      "name": "Get Tasks from API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Debug: Show what we got from the API\nconst response = $input.first().json;\n\nconsole.log('=== API RESPONSE DEBUG ===');\nconsole.log('Full response:', JSON.stringify(response, null, 2));\n\nif (response && response.tasks) {\n  console.log('Number of tasks:', response.tasks.length);\n  response.tasks.forEach((task, index) => {\n    console.log(`Task ${index}:`);\n    console.log('  ID:', task.id);\n    console.log('  Name:', task.name);\n    console.log('  Status:', task.status);\n  });\n  \n  // Return the first task for the next step\n  if (response.tasks.length > 0) {\n    const firstTask = response.tasks[0];\n    console.log('Processing first task:', JSON.stringify(firstTask, null, 2));\n    \n    return [{\n      json: {\n        task_id: String(firstTask.id),\n        task_name: firstTask.name,\n        task_description: firstTask.description,\n        original_response: response\n      }\n    }];\n  }\n}\n\nconsole.log('No tasks found or invalid response');\nreturn [{\n  json: {\n    error: 'No tasks found',\n    original_response: response\n  }\n}];"
+      },
+      "id": "debug-process",
+      "name": "Debug Process Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + ($json.task_id || 'undefined_fallback')}}",
+        "options": {}
+      },
+      "id": "debug-get-details",
+      "name": "Get Task Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Final debug output\nconst response = $input.first().json;\nconst processData = $node[\"Debug Process Tasks\"].json;\n\nconsole.log('=== FINAL RESULTS ===');\nconsole.log('Process data task_id:', processData.task_id);\nconsole.log('API call was made to: taskmaster/show/' + processData.task_id);\nconsole.log('API response:', JSON.stringify(response, null, 2));\n\nif (response && response.success) {\n  console.log('✅ SUCCESS: Task details retrieved');\n  console.log('Task name:', response.task.name);\n  console.log('Task status:', response.task.status);\n} else {\n  console.log('❌ FAILED: Could not get task details');\n  console.log('Error:', response.error || 'Unknown error');\n}\n\nreturn [$input.first()];"
+      },
+      "id": "debug-final",
+      "name": "Final Debug",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [960, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Tasks from API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Tasks from API": {
+      "main": [
+        [
+          {
+            "node": "Debug Process Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug Process Tasks": {
+      "main": [
+        [
+          {
+            "node": "Get Task Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task Details": {
+      "main": [
+        [
+          {
+            "node": "Final Debug",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "debug-001",
+  "id": "debug-test",
+  "meta": {
+    "instanceId": "n8n-debug-test"
+  },
+  "tags": []
+}

@@ -1,0 +1,67 @@
+{
+  "name": "Ultra Simple Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ultra-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5003/api/taskmaster/show/1",
+        "options": {}
+      },
+      "id": "ultra-test",
+      "name": "Direct API Test",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const response = $input.first().json;\nconsole.log('=== DIRECT API TEST RESULT ===');\nconsole.log('Response:', JSON.stringify(response, null, 2));\n\nif (response && response.success) {\n  console.log('✅ SUCCESS: Direct API call worked!');\n  console.log('Task name:', response.task.name);\n} else {\n  console.log('❌ FAILED: Direct API call failed');\n  console.log('Error:', response.error);\n}\n\nreturn [$input.first()];"
+      },
+      "id": "ultra-debug",
+      "name": "Show Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Direct API Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Direct API Test": {
+      "main": [
+        [
+          {
+            "node": "Show Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "ultra-simple-001",
+  "id": "ultra-simple",
+  "meta": {
+    "instanceId": "n8n-ultra-simple"
+  },
+  "tags": []
+}

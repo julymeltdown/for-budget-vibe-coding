@@ -1,0 +1,123 @@
+{
+  "name": "Network Connection Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "net-start",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5003/health",
+        "options": {}
+      },
+      "id": "net-test-1",
+      "name": "Test host.docker.internal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [380, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:5003/health",
+        "options": {}
+      },
+      "id": "net-test-2",
+      "name": "Test localhost",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [380, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://192.168.0.11:5003/health",
+        "options": {}
+      },
+      "id": "net-test-3",
+      "name": "Test IP Address",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [380, 400]
+    },
+    {
+      "parameters": {
+        "functionCode": "const results = {\n  'host.docker.internal': null,\n  'localhost': null,\n  'ip_address': null\n};\n\ntry {\n  const hostDockerResult = $node[\"Test host.docker.internal\"].json;\n  results['host.docker.internal'] = hostDockerResult.status || 'failed';\n  console.log('host.docker.internal result:', hostDockerResult);\n} catch (e) {\n  results['host.docker.internal'] = 'error: ' + e.message;\n}\n\ntry {\n  const localhostResult = $node[\"Test localhost\"].json;\n  results['localhost'] = localhostResult.status || 'failed';\n  console.log('localhost result:', localhostResult);\n} catch (e) {\n  results['localhost'] = 'error: ' + e.message;\n}\n\ntry {\n  const ipResult = $node[\"Test IP Address\"].json;\n  results['ip_address'] = ipResult.status || 'failed';\n  console.log('IP address result:', ipResult);\n} catch (e) {\n  results['ip_address'] = 'error: ' + e.message;\n}\n\nconsole.log('=== NETWORK TEST RESULTS ===');\nconsole.log(JSON.stringify(results, null, 2));\n\n// Find working URL\nlet workingUrl = null;\nif (results['host.docker.internal'] === 'healthy') workingUrl = 'http://host.docker.internal:5003';\nelse if (results['localhost'] === 'healthy') workingUrl = 'http://localhost:5003';\nelse if (results['ip_address'] === 'healthy') workingUrl = 'http://192.168.0.11:5003';\n\nconsole.log('Working URL:', workingUrl || 'None found');\n\nreturn [{\n  json: {\n    results: results,\n    working_url: workingUrl,\n    recommendation: workingUrl ? `Use ${workingUrl} in your workflows` : 'Check API server and network configuration'\n  }\n}];"
+      },
+      "id": "net-summary",
+      "name": "Network Test Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [560, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Test host.docker.internal",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test localhost",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Test IP Address",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test host.docker.internal": {
+      "main": [
+        [
+          {
+            "node": "Network Test Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test localhost": {
+      "main": [
+        [
+          {
+            "node": "Network Test Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test IP Address": {
+      "main": [
+        [
+          {
+            "node": "Network Test Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "network-test-001",
+  "id": "network-test",
+  "meta": {
+    "instanceId": "n8n-network-test"
+  },
+  "tags": []
+}

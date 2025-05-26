@@ -1,0 +1,100 @@
+{
+  "name": "Simple Task Master API Test",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "start-001",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "task_id",
+              "value": "1"
+            },
+            {
+              "name": "debug_info", 
+              "value": "Testing task ID 1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-001", 
+      "name": "Set Task ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + ($json.task_id || 'no_task_id')}}",
+        "options": {}
+      },
+      "id": "http-001",
+      "name": "Test Task Master API",
+      "type": "n8n-nodes-base.httpRequest", 
+      "typeVersion": 3,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Debug output\nconst input = $input.first();\nconsole.log('=== DEBUG INFO ===');\nconsole.log('Full input:', JSON.stringify(input, null, 2));\nconsole.log('Input JSON:', JSON.stringify(input.json, null, 2));\n\n// Check if the API call was successful\nconst response = input.json;\n\nif (response && response.success) {\n  console.log('✅ API call successful!');\n  console.log('Task ID:', response.task.task_id);\n  console.log('Task name:', response.task.name);\n  console.log('Task status:', response.task.status);\n  console.log('Task description:', response.task.description);\n} else if (response && response.error) {\n  console.log('❌ API call failed');\n  console.log('Error:', response.error);\n  console.log('Full response:', JSON.stringify(response, null, 2));\n} else {\n  console.log('🤔 Unexpected response format');\n  console.log('Response:', JSON.stringify(response, null, 2));\n}\n\n// Also log the previous node data\nconst setTaskIdData = $node[\"Set Task ID\"].json;\nconsole.log('Set Task ID data:', JSON.stringify(setTaskIdData, null, 2));\n\nreturn [input];"
+      },
+      "id": "code-001",
+      "name": "Debug Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [780, 300]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set Task ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Task ID": {
+      "main": [
+        [
+          {
+            "node": "Test Task Master API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Task Master API": {
+      "main": [
+        [
+          {
+            "node": "Debug Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "simple-test-001",
+  "id": "simple-test",
+  "meta": {
+    "instanceId": "n8n-simple-test"
+  },
+  "tags": []
+}
