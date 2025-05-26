@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Task Master Wrapper - 기존 task-master 명령어와의 호환성을 위한 래퍼
+Task Master Wrapper - Compatibility wrapper for existing task-master commands
 """
 
 import os
@@ -9,7 +9,7 @@ import json
 import argparse
 from datetime import datetime
 
-# 현재 디렉토리를 Python 경로에 추가
+# Add current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from task_orchestrator import TaskOrchestrator
@@ -21,11 +21,11 @@ class TaskMasterWrapper:
         self.tasks_data = self.orchestrator.tasks_data
     
     def list_tasks(self, filter_status=None, show_details=False):
-        """태스크 목록을 표시합니다."""
-        print("\n=== 태스크 목록 ===\n")
+        """Display task list."""
+        print("\n=== Task List ===\n")
         
         if not self.tasks_data.get("tasks"):
-            print("등록된 태스크가 없습니다.")
+            print("No tasks registered.")
             return
         
         for task in self.tasks_data["tasks"]:
@@ -40,16 +40,16 @@ class TaskMasterWrapper:
             }.get(task.get("status", "pending"), "❓")
             
             print(f"{status_emoji} [{task['id']}] {task.get('name', 'Unnamed Task')}")
-            print(f"   상태: {task.get('status', 'pending')}")
+            print(f"   Status: {task.get('status', 'pending')}")
             
             if show_details and task.get("description"):
-                print(f"   설명: {task['description']}")
+                print(f"   Description: {task['description']}")
             
-            # 서브태스크 정보
+            # Subtask information
             subtasks = task.get("subtasks", [])
             if subtasks:
                 completed_subtasks = sum(1 for st in subtasks if st.get("status") == "completed")
-                print(f"   서브태스크: {completed_subtasks}/{len(subtasks)} 완료")
+                print(f"   Subtasks: {completed_subtasks}/{len(subtasks)} completed")
                 
                 if show_details:
                     for subtask in subtasks:
@@ -61,24 +61,24 @@ class TaskMasterWrapper:
                         }.get(subtask.get("status", "pending"), "  ❓")
                         print(f"     {st_emoji} [{subtask['id']}] {subtask.get('name', 'Unnamed Subtask')}")
             
-            # 시작/완료 시간
+            # Start/completion time
             if task.get("started_at"):
-                print(f"   시작: {task['started_at']}")
+                print(f"   Started: {task['started_at']}")
             if task.get("completed_at"):
-                print(f"   완료: {task['completed_at']}")
+                print(f"   Completed: {task['completed_at']}")
                 
-            print()  # 빈 줄
+            print()  # Empty line
     
     def show_status(self):
-        """프로젝트 진행 상황을 요약합니다."""
-        print("\n=== 프로젝트 진행 상황 ===\n")
+        """Summarize project progress."""
+        print("\n=== Project Progress ===\n")
         
         total_tasks = len(self.tasks_data.get("tasks", []))
         if total_tasks == 0:
-            print("등록된 태스크가 없습니다.")
+            print("No tasks registered.")
             return
         
-        # 태스크 상태별 집계
+        # Aggregate by task status
         status_counts = {
             "pending": 0,
             "in_progress": 0,
@@ -97,68 +97,68 @@ class TaskMasterWrapper:
             total_subtasks += len(subtasks)
             completed_subtasks += sum(1 for st in subtasks if st.get("status") == "completed")
         
-        # 진행률 계산
+        # Calculate progress
         completed_tasks = status_counts["completed"]
         task_progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
         subtask_progress = (completed_subtasks / total_subtasks * 100) if total_subtasks > 0 else 0
         
-        print(f"총 태스크: {total_tasks}")
-        print(f"  - 대기중: {status_counts['pending']}")
-        print(f"  - 진행중: {status_counts['in_progress']}")
-        print(f"  - 완료: {status_counts['completed']}")
-        print(f"  - 실패: {status_counts['failed']}")
-        print(f"\n태스크 진행률: {task_progress:.1f}%")
-        print(f"서브태스크 진행률: {subtask_progress:.1f}% ({completed_subtasks}/{total_subtasks})")
+        print(f"Total tasks: {total_tasks}")
+        print(f"  - Pending: {status_counts['pending']}")
+        print(f"  - In Progress: {status_counts['in_progress']}")
+        print(f"  - Completed: {status_counts['completed']}")
+        print(f"  - Failed: {status_counts['failed']}")
+        print(f"\nTask Progress: {task_progress:.1f}%")
+        print(f"Subtask Progress: {subtask_progress:.1f}% ({completed_subtasks}/{total_subtasks})")
         
-        # 테스트 이력 정보
+        # Test history information
         test_history_file = os.path.join("logs", "test_history.json")
         if os.path.exists(test_history_file):
             try:
                 with open(test_history_file, 'r') as f:
                     test_history = json.load(f)
                     
-                print(f"\n테스트 실행 통계:")
-                print(f"  - 총 실행: {test_history.get('total_runs', 0)}회")
-                print(f"  - 성공: {test_history.get('total_passes', 0)}회")
-                print(f"  - 실패: {test_history.get('total_failures', 0)}회")
+                print(f"\nTest Execution Statistics:")
+                print(f"  - Total runs: {test_history.get('total_runs', 0)}")
+                print(f"  - Passed: {test_history.get('total_passes', 0)}")
+                print(f"  - Failed: {test_history.get('total_failures', 0)}")
                 
                 if test_history.get('last_run'):
                     last_run = datetime.fromtimestamp(test_history['last_run'])
-                    print(f"  - 마지막 실행: {last_run.strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"  - Last run: {last_run.strftime('%Y-%m-%d %H:%M:%S')}")
             except Exception as e:
                 pass
     
     def reset_task(self, task_id=None, subtask_id=None):
-        """태스크 또는 서브태스크의 상태를 초기화합니다."""
+        """Reset status of task or subtask."""
         if task_id:
             task = self.orchestrator.get_task_by_id(task_id)
             if not task:
-                print(f"태스크 '{task_id}'를 찾을 수 없습니다.")
+                print(f"Task '{task_id}' not found.")
                 return False
                 
             if subtask_id:
                 subtask = self.orchestrator.get_subtask_by_id(task, subtask_id)
                 if not subtask:
-                    print(f"서브태스크 '{subtask_id}'를 찾을 수 없습니다.")
+                    print(f"Subtask '{subtask_id}' not found.")
                     return False
                     
                 subtask["status"] = "pending"
                 subtask["failure_count"] = 0
-                print(f"서브태스크 '{subtask.get('name', subtask_id)}' 상태를 초기화했습니다.")
+                print(f"Reset subtask '{subtask.get('name', subtask_id)}' status.")
             else:
                 task["status"] = "pending"
                 task["failure_count"] = 0
                 task.pop("started_at", None)
                 task.pop("completed_at", None)
                 
-                # 모든 서브태스크도 초기화
+                # Reset all subtasks too
                 for subtask in task.get("subtasks", []):
                     subtask["status"] = "pending"
                     subtask["failure_count"] = 0
                     
-                print(f"태스크 '{task.get('name', task_id)}' 상태를 초기화했습니다.")
+                print(f"Reset task '{task.get('name', task_id)}' status.")
         else:
-            # 모든 태스크 초기화
+            # Reset all tasks
             for task in self.tasks_data["tasks"]:
                 task["status"] = "pending"
                 task["failure_count"] = 0
@@ -169,7 +169,7 @@ class TaskMasterWrapper:
                     subtask["status"] = "pending"
                     subtask["failure_count"] = 0
                     
-            print("모든 태스크 상태를 초기화했습니다.")
+            print("Reset all task statuses.")
         
         self.orchestrator._save_tasks_data()
         return True
@@ -177,56 +177,56 @@ class TaskMasterWrapper:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Task Master - AI 자동화 프로젝트 관리 도구',
+        description='Task Master - AI Automation Project Management Tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-사용 예시:
-  python task_master_wrapper.py list              # 모든 태스크 목록 표시
-  python task_master_wrapper.py list --status pending  # 대기중인 태스크만 표시
-  python task_master_wrapper.py list --details    # 상세 정보 포함
-  python task_master_wrapper.py status            # 프로젝트 진행 상황 요약
-  python task_master_wrapper.py reset             # 모든 태스크 상태 초기화
-  python task_master_wrapper.py reset --task task-1  # 특정 태스크 초기화
-  python task_master_wrapper.py run               # 태스크 실행 (task_orchestrator.py 호출)
+Usage examples:
+  python task_master_wrapper.py list              # Show all tasks
+  python task_master_wrapper.py list --status pending  # Show only pending tasks
+  python task_master_wrapper.py list --details    # Include detailed information
+  python task_master_wrapper.py status            # Summarize project progress
+  python task_master_wrapper.py reset             # Reset all task statuses
+  python task_master_wrapper.py reset --task task-1  # Reset specific task
+  python task_master_wrapper.py run               # Run tasks (calls task_orchestrator.py)
         """
     )
     
-    subparsers = parser.add_subparsers(dest='command', help='사용 가능한 명령어')
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
-    # list 명령어
-    list_parser = subparsers.add_parser('list', help='태스크 목록 표시')
+    # list command
+    list_parser = subparsers.add_parser('list', help='Display task list')
     list_parser.add_argument('--status', choices=['pending', 'in_progress', 'completed', 'failed'],
-                           help='특정 상태의 태스크만 표시')
+                           help='Show only tasks with specific status')
     list_parser.add_argument('--details', '-d', action='store_true',
-                           help='상세 정보 표시')
+                           help='Show detailed information')
     
-    # status 명령어
-    status_parser = subparsers.add_parser('status', help='프로젝트 진행 상황 요약')
+    # status command
+    status_parser = subparsers.add_parser('status', help='Summarize project progress')
     
-    # reset 명령어
-    reset_parser = subparsers.add_parser('reset', help='태스크 상태 초기화')
-    reset_parser.add_argument('--task', '-t', help='초기화할 태스크 ID')
-    reset_parser.add_argument('--subtask', '-s', help='초기화할 서브태스크 ID')
+    # reset command
+    reset_parser = subparsers.add_parser('reset', help='Reset task status')
+    reset_parser.add_argument('--task', '-t', help='Task ID to reset')
+    reset_parser.add_argument('--subtask', '-s', help='Subtask ID to reset')
     
-    # run 명령어
-    run_parser = subparsers.add_parser('run', help='태스크 실행')
-    run_parser.add_argument('--task', '-t', help='실행할 태스크 ID')
-    run_parser.add_argument('--subtask', '-s', help='실행할 서브태스크 ID')
+    # run command
+    run_parser = subparsers.add_parser('run', help='Run tasks')
+    run_parser.add_argument('--task', '-t', help='Task ID to run')
+    run_parser.add_argument('--subtask', '-s', help='Subtask ID to run')
     
-    # 설정 파일 옵션 (모든 명령어에 공통)
+    # Config file option (common to all commands)
     parser.add_argument('--config', '-c', default='config.json',
-                       help='설정 파일 경로 (기본값: config.json)')
+                       help='Configuration file path (default: config.json)')
     
     args = parser.parse_args()
     
-    # 명령어가 없으면 status 표시
+    # Show status if no command
     if not args.command:
         args.command = 'status'
     
-    # TaskMasterWrapper 초기화
+    # Initialize TaskMasterWrapper
     wrapper = TaskMasterWrapper(args.config)
     
-    # 명령어 실행
+    # Execute command
     if args.command == 'list':
         wrapper.list_tasks(filter_status=args.status, show_details=args.details)
     
@@ -237,7 +237,7 @@ def main():
         wrapper.reset_task(task_id=args.task, subtask_id=args.subtask)
     
     elif args.command == 'run':
-        # task_orchestrator.py 실행
+        # Execute task_orchestrator.py
         from task_orchestrator import main as orchestrator_main
         sys.argv = ['task_orchestrator.py', '--config', args.config]
         if args.task:

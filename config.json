@@ -7,6 +7,7 @@
   "task_definition_file": "tasks.json",
   "task_files_dir": "tasks",
   "max_subtask_retries": 2,
+  "max_tasks_per_run": 10,
   "check_quality_after_tests": true,
   "auto_commit_after_subtask": true,
   "git_enabled": true,

@@ -20,7 +20,13 @@
 3. 하단의 "Claude hit the maximum length..." 메시지 영역 선택
 4. `max_length_message.png`로 저장
 
-### 4. 프로젝트 버튼 캡처 (예: kido)
+### 4. Usage Limit 메시지 캡처
+1. 사용량 한도에 도달했을 때 나타나는 메시지 확인
+2. Win + Shift + S 누르기
+3. "try again in 2 hours" 등의 메시지가 포함된 영역 선택
+4. `usage_limit_message.png`로 저장
+
+### 5. 프로젝트 버튼 캡처 (예: kido)
 1. Projects 클릭
 2. Win + Shift + S 누르기
 3. 프로젝트 이름이 있는 버튼 영역 선택
@@ -37,6 +43,7 @@
 - Continue 버튼: 약 150x60 픽셀
 - Projects 버튼: 약 100x40 픽셀  
 - Max length 메시지: 약 600x50 픽셀
+- Usage limit 메시지: 약 400x80 픽셀
 - 프로젝트 버튼: 약 200x50 픽셀
 
 ## 자동 캡처 사용

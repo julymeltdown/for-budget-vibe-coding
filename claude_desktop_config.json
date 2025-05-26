@@ -11,5 +11,8 @@
   "continue_button_image": "continue_button.png",
   "projects_button_image": "projects_button.png",
   "project_button_image": "project_button.png",
-  "max_length_message_image": "max_length_message.png"
+  "max_length_message_image": "max_length_message.png",
+  "usage_limit_message_image": "usage_limit_message.png",
+  "usage_limit_wait_hours": 2,
+  "debug_usage_limit_wait_seconds": 10
 }

@@ -3,12 +3,13 @@ import re
 import ast
 import logging
 import json
+import sys
 from pathlib import Path
 
 class CodeAnalyzer:
     def __init__(self, config_path=None):
-        """코드 분석 클래스 초기화"""
-        # 기본 설정
+        """Initialize code analysis class"""
+        # Default configuration
         self.default_config = {
             "src_dir": "src",
             "test_dir": "tests",
@@ -32,45 +33,45 @@ class CodeAnalyzer:
             ]
         }
         
-        # 설정 파일 로드
+        # Load configuration file
         self.config = self.default_config.copy()
         if config_path and os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     user_config = json.load(f)
                     self.config.update(user_config)
-                logging.info(f"설정 파일 로드 완료: {config_path}")
+                logging.info(f"Configuration file loaded: {config_path}")
             except Exception as e:
-                logging.error(f"설정 파일 로드 실패: {e}")
+                logging.error(f"Failed to load configuration file: {e}")
         
-        logging.info("코드 분석기 초기화 완료")
+        logging.info("Code analyzer initialization complete")
     
     def find_files(self, directory, extensions=None):
-        """지정된 디렉토리에서 파일을 찾습니다."""
+        """Find files in the specified directory."""
         if extensions is None:
             extensions = ['.py']
         
         files = []
         for root, dirs, filenames in os.walk(directory):
-            # 무시할 디렉토리 제외
+            # Exclude directories to ignore
             dirs[:] = [d for d in dirs if d not in self.config["ignore_dirs"]]
             
             for filename in filenames:
-                # 확장자 확인
+                # Check extensions
                 if any(filename.endswith(ext) for ext in extensions):
-                    # 무시할 파일 제외
+                    # Exclude files to ignore
                     if filename not in self.config["ignore_files"]:
                         files.append(os.path.join(root, filename))
         
         return files
     
     def detect_mocks(self, file_path):
-        """파일에서 모의(mock) 처리를 감지합니다."""
+        """Detect mock usage in a file."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 모의 처리 패턴 검색
+            # Search for mock patterns
             mock_instances = []
             for pattern in self.config["mock_patterns"]:
                 for match in re.finditer(pattern, content):
@@ -85,16 +86,16 @@ class CodeAnalyzer:
             return mock_instances
         
         except Exception as e:
-            logging.error(f"모의 처리 감지 중 오류 발생: {e}")
+            logging.error(f"Error detecting mocks: {e}")
             return []
     
     def detect_commented_code(self, file_path):
-        """파일에서 주석 처리된 코드를 감지합니다."""
+        """Detect commented out code in a file."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 주석 처리된 코드 패턴 검색
+            # Search for commented code patterns
             commented_code = []
             for pattern in self.config["commented_code_patterns"]:
                 for match in re.finditer(pattern, content):
@@ -109,18 +110,18 @@ class CodeAnalyzer:
             return commented_code
         
         except Exception as e:
-            logging.error(f"주석 처리된 코드 감지 중 오류 발생: {e}")
+            logging.error(f"Error detecting commented code: {e}")
             return []
     
     def analyze_project(self, directory=None):
-        """프로젝트 전체를 분석합니다."""
+        """Analyze the entire project."""
         if directory is None:
             directory = self.config["src_dir"]
         
-        # 파일 목록 가져오기
+        # Get file list
         files = self.find_files(directory)
         
-        # 분석 결과
+        # Analysis results
         analysis_result = {
             "total_files": len(files),
             "files_with_mocks": 0,
@@ -130,7 +131,7 @@ class CodeAnalyzer:
             "details": []
         }
         
-        # 각 파일 분석
+        # Analyze each file
         for file_path in files:
             file_result = {
                 "file": file_path,
@@ -138,7 +139,7 @@ class CodeAnalyzer:
                 "commented_code": self.detect_commented_code(file_path)
             }
             
-            # 통계 업데이트
+            # Update statistics
             if file_result["mocks"]:
                 analysis_result["files_with_mocks"] += 1
                 analysis_result["total_mocks"] += len(file_result["mocks"])
@@ -147,22 +148,22 @@ class CodeAnalyzer:
                 analysis_result["files_with_commented_code"] += 1
                 analysis_result["total_commented_code"] += len(file_result["commented_code"])
             
-            # 상세 정보 추가 (모의 처리 또는 주석 처리된 코드가 있는 경우에만)
+            # Add detailed information (only if mocks or commented code found)
             if file_result["mocks"] or file_result["commented_code"]:
                 analysis_result["details"].append(file_result)
         
-        logging.info(f"프로젝트 분석 완료: {analysis_result['total_files']} 파일, {analysis_result['total_mocks']} 모의 처리, {analysis_result['total_commented_code']} 주석 처리된 코드")
+        logging.info(f"Project analysis complete: {analysis_result['total_files']} files, {analysis_result['total_mocks']} mocks, {analysis_result['total_commented_code']} commented code blocks")
         return analysis_result
     
     def get_analysis_summary(self, analysis_result):
-        """분석 결과 요약을 반환합니다."""
+        """Return analysis result summary."""
         summary = []
         
-        # 모의 처리 요약
+        # Mock usage summary
         if analysis_result["total_mocks"] > 0:
-            summary.append(f"모의(mock) 처리 발견: {analysis_result['total_mocks']} 개 ({analysis_result['files_with_mocks']} 파일)")
+            summary.append(f"Mock usage found: {analysis_result['total_mocks']} instances ({analysis_result['files_with_mocks']} files)")
             
-            # 상위 5개 파일 목록
+            # Top 5 files
             top_files = sorted(
                 [f for f in analysis_result["details"] if f["mocks"]],
                 key=lambda x: len(x["mocks"]),
@@ -170,13 +171,13 @@ class CodeAnalyzer:
             )[:5]
             
             for file_result in top_files:
-                summary.append(f"  - {file_result['file']}: {len(file_result['mocks'])} 개")
+                summary.append(f"  - {file_result['file']}: {len(file_result['mocks'])} instances")
         
-        # 주석 처리된 코드 요약
+        # Commented code summary
         if analysis_result["total_commented_code"] > 0:
-            summary.append(f"주석 처리된 코드 발견: {analysis_result['total_commented_code']} 개 ({analysis_result['files_with_commented_code']} 파일)")
+            summary.append(f"Commented code found: {analysis_result['total_commented_code']} blocks ({analysis_result['files_with_commented_code']} files)")
             
-            # 상위 5개 파일 목록
+            # Top 5 files
             top_files = sorted(
                 [f for f in analysis_result["details"] if f["commented_code"]],
                 key=lambda x: len(x["commented_code"]),
@@ -184,16 +185,16 @@ class CodeAnalyzer:
             )[:5]
             
             for file_result in top_files:
-                summary.append(f"  - {file_result['file']}: {len(file_result['commented_code'])} 개")
+                summary.append(f"  - {file_result['file']}: {len(file_result['commented_code'])} blocks")
         
-        return "\n".join(summary) if summary else "임시 처리 없음"
+        return "\n".join(summary) if summary else "No temporary code found"
     
     def check_hexagonal_architecture(self, directory=None):
-        """헥사고날 아키텍처 준수 여부를 검사합니다."""
+        """Check hexagonal architecture compliance."""
         if directory is None:
             directory = self.config["src_dir"]
         
-        # 헥사고날 아키텍처 레이어
+        # Hexagonal architecture layers
         hexagonal_layers = {
             "domain": False,
             "application": False,
@@ -202,13 +203,13 @@ class CodeAnalyzer:
             "adapters": False
         }
         
-        # 디렉토리 구조 확인
+        # Check directory structure
         for root, dirs, files in os.walk(directory):
             for layer in hexagonal_layers:
                 if layer in os.path.basename(root).lower():
                     hexagonal_layers[layer] = True
         
-        # 결과
+        # Results
         result = {
             "is_hexagonal": all(hexagonal_layers.values()),
             "layers": hexagonal_layers,
@@ -216,18 +217,18 @@ class CodeAnalyzer:
         }
         
         if result["is_hexagonal"]:
-            logging.info("헥사고날 아키텍처 준수 확인")
+            logging.info("Hexagonal architecture compliance confirmed")
         else:
-            logging.warning(f"헥사고날 아키텍처 미준수: 누락된 레이어 {result['missing_layers']}")
+            logging.warning(f"Hexagonal architecture non-compliance: missing layers {result['missing_layers']}")
         
         return result
     
     def check_jwt_implementation(self, directory=None):
-        """JWT 구현 여부를 검사합니다."""
+        """Check JWT implementation."""
         if directory is None:
             directory = self.config["src_dir"]
         
-        # JWT 관련 패턴
+        # JWT-related patterns
         jwt_patterns = [
             r"import\s+jwt",
             r"from\s+jwt\s+import",
@@ -241,10 +242,10 @@ class CodeAnalyzer:
             r"refresh_token"
         ]
         
-        # 파일 목록 가져오기
+        # Get file list
         files = self.find_files(directory)
         
-        # JWT 구현 검사
+        # Check JWT implementation
         jwt_files = []
         for file_path in files:
             try:
@@ -257,9 +258,9 @@ class CodeAnalyzer:
                         break
             
             except Exception as e:
-                logging.error(f"JWT 구현 검사 중 오류 발생: {e}")
+                logging.error(f"Error checking JWT implementation: {e}")
         
-        # 결과
+        # Results
         result = {
             "has_jwt": len(jwt_files) > 0,
             "jwt_files": jwt_files,
@@ -267,27 +268,27 @@ class CodeAnalyzer:
         }
         
         if result["has_jwt"]:
-            logging.info(f"JWT 구현 확인: {result['jwt_file_count']} 파일")
+            logging.info(f"JWT implementation confirmed: {result['jwt_file_count']} files")
         else:
-            logging.warning("JWT 구현 미확인")
+            logging.warning("JWT implementation not found")
         
         return result
     
     def analyze_code_quality(self, directory=None):
-        """코드 품질을 종합적으로 분석합니다."""
+        """Analyze code quality comprehensively."""
         if directory is None:
             directory = self.config["src_dir"]
         
-        # 모의 처리 및 주석 처리된 코드 분석
+        # Analyze mocks and commented code
         mock_analysis = self.analyze_project(directory)
         
-        # 헥사고날 아키텍처 검사
+        # Check hexagonal architecture
         hexagonal_check = self.check_hexagonal_architecture(directory)
         
-        # JWT 구현 검사
+        # Check JWT implementation
         jwt_check = self.check_jwt_implementation(directory)
         
-        # 종합 결과
+        # Comprehensive results
         result = {
             "mock_analysis": mock_analysis,
             "hexagonal_check": hexagonal_check,
@@ -300,61 +301,61 @@ class CodeAnalyzer:
             }
         }
         
-        # 종합 품질 점수 (100점 만점)
+        # Overall quality score (out of 100)
         quality_score = 100
         
-        # 모의 처리 감점
+        # Deduct points for mocks
         if result["overall_quality"]["has_mocks"]:
             quality_score -= min(30, mock_analysis["total_mocks"] * 2)
         
-        # 주석 처리된 코드 감점
+        # Deduct points for commented code
         if result["overall_quality"]["has_commented_code"]:
             quality_score -= min(20, mock_analysis["total_commented_code"])
         
-        # 헥사고날 아키텍처 미준수 감점
+        # Deduct points for non-hexagonal architecture
         if not result["overall_quality"]["is_hexagonal"]:
             quality_score -= 25
         
-        # JWT 미구현 감점
+        # Deduct points for missing JWT
         if not result["overall_quality"]["has_jwt"]:
             quality_score -= 15
         
         result["overall_quality"]["score"] = max(0, quality_score)
         
-        logging.info(f"코드 품질 분석 완료: 점수 {result['overall_quality']['score']}/100")
+        logging.info(f"Code quality analysis complete: score {result['overall_quality']['score']}/100")
         return result
 
 
-# 테스트 코드
+# Test code
 if __name__ == "__main__":
-    # 로깅 설정
+    # Logging setup
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # 코드 분석기 생성
+    # Create code analyzer
     analyzer = CodeAnalyzer()
     
-    # 테스트 디렉토리 분석
+    # Test directory analysis
     test_dir = "."
     if len(sys.argv) > 1:
         test_dir = sys.argv[1]
     
-    # 프로젝트 분석
+    # Analyze project
     analysis_result = analyzer.analyze_project(test_dir)
     
-    # 분석 결과 요약 출력
+    # Print analysis summary
     summary = analyzer.get_analysis_summary(analysis_result)
-    print("\n=== 코드 분석 결과 요약 ===")
+    print("\n=== Code Analysis Summary ===")
     print(summary)
     
-    # 코드 품질 분석
+    # Analyze code quality
     quality_result = analyzer.analyze_code_quality(test_dir)
-    print("\n=== 코드 품질 분석 결과 ===")
-    print(f"품질 점수: {quality_result['overall_quality']['score']}/100")
-    print(f"헥사고날 아키텍처 준수: {'예' if quality_result['hexagonal_check']['is_hexagonal'] else '아니오'}")
-    print(f"JWT 구현: {'예' if quality_result['jwt_check']['has_jwt'] else '아니오'}")
+    print("\n=== Code Quality Analysis Results ===")
+    print(f"Quality Score: {quality_result['overall_quality']['score']}/100")
+    print(f"Hexagonal Architecture Compliance: {'Yes' if quality_result['hexagonal_check']['is_hexagonal'] else 'No'}")
+    print(f"JWT Implementation: {'Yes' if quality_result['jwt_check']['has_jwt'] else 'No'}")
     
     if quality_result['hexagonal_check']['missing_layers']:
-        print(f"누락된 헥사고날 레이어: {', '.join(quality_result['hexagonal_check']['missing_layers'])}")
+        print(f"Missing Hexagonal Layers: {', '.join(quality_result['hexagonal_check']['missing_layers'])}")

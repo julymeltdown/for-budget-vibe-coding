@@ -1,5 +1,5 @@
 """
-Task Manager - Task Master 스타일의 task 관리 기능
+Task Manager - Task Master style task management functionality
 """
 import json
 import os
@@ -16,7 +16,7 @@ class TaskManager:
         self.tasks_data = self._load_tasks()
         
     def _load_tasks(self) -> Dict:
-        """tasks.json 파일 로드"""
+        """Load tasks.json file"""
         if not os.path.exists(self.tasks_file):
             return {"tasks": [], "metadata": {"last_updated": None, "version": "1.0"}}
         
@@ -28,7 +28,7 @@ class TaskManager:
             return {"tasks": [], "metadata": {}}
     
     def _save_tasks(self) -> bool:
-        """tasks.json 파일 저장"""
+        """Save tasks.json file"""
         try:
             self.tasks_data["metadata"]["last_updated"] = datetime.now().isoformat()
             with open(self.tasks_file, 'w', encoding='utf-8') as f:
@@ -39,14 +39,14 @@ class TaskManager:
             return False
     
     def list_tasks(self, status: Optional[str] = None, with_subtasks: bool = True) -> List[Dict]:
-        """모든 task 목록 반환"""
+        """Return all task list"""
         tasks = self.tasks_data.get("tasks", [])
         
         if status:
             tasks = [t for t in tasks if t.get("status") == status]
         
         if not with_subtasks:
-            # subtask 제외
+            # Exclude subtasks
             for task in tasks:
                 task_copy = task.copy()
                 task_copy.pop("subtasks", None)
@@ -55,25 +55,25 @@ class TaskManager:
             return tasks
     
     def get_task(self, task_id: str) -> Optional[Dict]:
-        """특정 task 가져오기"""
+        """Get specific task"""
         for task in self.tasks_data.get("tasks", []):
             if str(task.get("id")) == str(task_id):
                 return task
-            # subtask 검색
+            # Search subtasks
             for subtask in task.get("subtasks", []):
                 if f"{task['id']}.{subtask['id']}" == task_id:
                     return subtask
         return None
     
     def get_next_task(self) -> Optional[Dict]:
-        """다음으로 수행할 task 찾기 (의존성 고려)"""
+        """Find next task to work on (considering dependencies)"""
         tasks = self.tasks_data.get("tasks", [])
         
         for task in tasks:
             if task.get("status") != "pending":
                 continue
                 
-            # 의존성 확인
+            # Check dependencies
             dependencies = task.get("dependencies", [])
             if dependencies:
                 all_deps_completed = True
@@ -86,13 +86,13 @@ class TaskManager:
                 if not all_deps_completed:
                     continue
             
-            # 우선순위 고려
+            # Consider priority
             return task
         
         return None
     
     def set_task_status(self, task_id: str, status: str) -> bool:
-        """task 상태 변경"""
+        """Change task status"""
         valid_statuses = ["pending", "in-progress", "done", "review", "deferred", "cancelled"]
         if status not in valid_statuses:
             logger.error(f"Invalid status: {status}")
@@ -107,11 +107,11 @@ class TaskManager:
         return False
     
     def _find_task_for_update(self, task_id: str) -> Optional[Dict]:
-        """업데이트를 위한 task 찾기 (참조 반환)"""
+        """Find task for update (return reference)"""
         for task in self.tasks_data.get("tasks", []):
             if str(task.get("id")) == str(task_id):
                 return task
-            # subtask 검색
+            # Search subtasks
             for subtask in task.get("subtasks", []):
                 if f"{task['id']}.{subtask['id']}" == task_id:
                     return subtask
@@ -120,10 +120,10 @@ class TaskManager:
     def add_task(self, title: str, description: str, 
                  dependencies: Optional[List[str]] = None,
                  priority: str = "medium") -> Optional[str]:
-        """새 task 추가"""
+        """Add new task"""
         tasks = self.tasks_data.get("tasks", [])
         
-        # 새 ID 생성
+        # Generate new ID
         max_id = 0
         for task in tasks:
             task_id = int(task.get("id", 0))
@@ -151,7 +151,7 @@ class TaskManager:
         return None
     
     def add_subtask(self, parent_id: str, title: str, description: str) -> Optional[str]:
-        """subtask 추가"""
+        """Add subtask"""
         parent_task = self._find_task_for_update(parent_id)
         if not parent_task:
             logger.error(f"Parent task {parent_id} not found")
@@ -159,7 +159,7 @@ class TaskManager:
         
         subtasks = parent_task.get("subtasks", [])
         
-        # 새 subtask ID 생성
+        # Generate new subtask ID
         max_id = 0
         for subtask in subtasks:
             subtask_id = int(subtask.get("id", 0))
@@ -184,26 +184,26 @@ class TaskManager:
         return None
     
     def move_task(self, from_id: str, to_id: str) -> bool:
-        """task 이동/재구성"""
-        # from_id와 to_id 파싱
+        """Move/reorganize task"""
+        # Parse from_id and to_id
         from_parts = from_id.split('.')
         to_parts = to_id.split('.')
         
-        # 구현 예정: Task Master의 move 로직
+        # Implementation planned: Task Master move logic
         logger.info(f"Moving task from {from_id} to {to_id}")
-        # TODO: 구현
+        # TODO: Implementation
         return False
     
     def update_tasks(self, from_id: int, prompt: str, use_ai: bool = True) -> bool:
-        """특정 ID부터의 모든 task 업데이트"""
+        """Update all tasks from specific ID"""
         tasks = self.tasks_data.get("tasks", [])
         updated_count = 0
         
         for task in tasks:
             if int(task.get("id", 0)) >= from_id:
-                # AI를 사용한 업데이트 또는 수동 업데이트
+                # Update using AI or manual update
                 if use_ai:
-                    # TODO: AI 모델을 사용한 task 업데이트
+                    # TODO: Task update using AI model
                     logger.info(f"Updating task {task['id']} with AI prompt: {prompt}")
                 else:
                     task["description"] += f"\n\n[Updated]: {prompt}"
@@ -220,17 +220,17 @@ class TaskManager:
     
     def expand_task(self, task_id: str, num_subtasks: int = 3, 
                     prompt: Optional[str] = None, use_ai: bool = True) -> bool:
-        """task를 subtask로 확장"""
+        """Expand task into subtasks"""
         task = self._find_task_for_update(task_id)
         if not task:
             logger.error(f"Task {task_id} not found")
             return False
         
         if use_ai:
-            # TODO: AI를 사용한 subtask 생성
+            # TODO: Subtask generation using AI
             logger.info(f"Expanding task {task_id} with AI")
         else:
-            # 기본 subtask 생성
+            # Create default subtasks
             for i in range(1, num_subtasks + 1):
                 self.add_subtask(
                     task_id,
@@ -241,7 +241,7 @@ class TaskManager:
         return True
     
     def analyze_complexity(self, threshold: int = 5) -> Dict:
-        """task 복잡도 분석"""
+        """Analyze task complexity"""
         analysis = {
             "total_tasks": 0,
             "complex_tasks": [],
@@ -275,10 +275,10 @@ class TaskManager:
         return analysis
     
     def _calculate_complexity(self, task: Dict) -> int:
-        """task 복잡도 계산"""
+        """Calculate task complexity"""
         score = 0
         
-        # 설명 길이
+        # Description length
         description_length = len(task.get("description", ""))
         if description_length > 500:
             score += 3
@@ -287,11 +287,11 @@ class TaskManager:
         elif description_length > 100:
             score += 1
         
-        # 의존성 수
+        # Number of dependencies
         dependencies = len(task.get("dependencies", []))
         score += dependencies
         
-        # 기술 스택 언급 수
+        # Tech stack mentions
         tech_keywords = ["API", "database", "authentication", "integration", 
                         "migration", "security", "performance", "architecture"]
         description = task.get("description", "").lower()
@@ -299,14 +299,14 @@ class TaskManager:
             if keyword in description:
                 score += 1
         
-        # 이미 subtask가 있으면 복잡도 감소
+        # Reduce complexity if subtasks exist
         if task.get("subtasks"):
             score = max(0, score - 2)
         
         return score
     
     def _get_complexity_reasons(self, task: Dict) -> List[str]:
-        """복잡도가 높은 이유 분석"""
+        """Analyze reasons for high complexity"""
         reasons = []
         
         if len(task.get("description", "")) > 200:

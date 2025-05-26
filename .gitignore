@@ -61,3 +61,11 @@ node_modules/
 tasks/ 
 
 assets/kido_button.png
+
+.cursor/
+.idea/
+.roo
+venv/
+
+.roomdes
+.taskmasterconfig
