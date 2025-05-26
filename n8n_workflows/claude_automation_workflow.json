@@ -12,7 +12,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://host.docker.internal:5003/api/tasks",
+        "url": "http://host.docker.internal:5002/api/tasks",
         "options": {
           "queryParameters": {
             "parameters": [
@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{\"http://host.docker.internal:5003/api/taskmaster/show/\" + ($json.task_id || '1')}}",
+        "url": "={{\"http://host.docker.internal:5002/api/taskmaster/show/\" + ($json.task_id || '1')}}",
         "options": {}
       },
       "id": "7dbf0fb0-4567-89ab-cdef-012345678901",
@@ -65,7 +65,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:5003/api/automation/run",
+        "url": "http://host.docker.internal:5001/api/automation/run",
         "sendBody": true,
         "bodyContentType": "json",
         "jsonBody": "={{ {\n  \"prompt\": $json.prompt || \"Default prompt\",\n  \"wait_for_continue\": $json.wait_for_continue || true,\n  \"create_new_chat\": $json.create_new_chat || false,\n  \"project_name\": $json.project_name || \"automation-project\"\n} }}",
@@ -91,7 +91,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://host.docker.internal:5003/api/automation/status/{{$node[\"Trigger Claude Automation\"].json.task_id}}",
+        "url": "http://host.docker.internal:5001/api/automation/status/{{$node[\"Trigger Claude Automation\"].json.task_id}}",
         "options": {}
       },
       "id": "b1f34ff4-89ab-cdef-0123-456789012345",
@@ -121,7 +121,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:5003/api/taskmaster/run-tests",
+        "url": "http://host.docker.internal:5002/api/taskmaster/run-tests",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -142,7 +142,7 @@
     {
       "parameters": {
         "method": "PUT", 
-        "url": "={{\"http://host.docker.internal:5003/api/tasks/\" + $node[\"Process Tasks\"].json.task_id + \"/status\"}}",
+        "url": "={{\"http://host.docker.internal:5002/api/tasks/\" + $node[\"Process Tasks\"].json.task_id + \"/status\"}}",
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
