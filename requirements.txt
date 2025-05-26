@@ -1,0 +1,8 @@
+pyautogui==0.9.54
+opencv-python==4.10.0.84  # 최신 버전으로 업데이트
+numpy==1.26.4  # Python 3.12와 호환되는 버전
+pillow==10.4.0  # 최신 버전으로 업데이트
+requests==2.32.3  # 최신 버전으로 업데이트
+pytest==8.3.4  # 최신 버전으로 업데이트
+setuptools>=42
+wheel

@@ -1,0 +1,35 @@
+{
+  "project_dir": ".", 
+  "dev_project_path": "C:\\Users\\lhs\\Desktop\\dev\\kido",
+  "dev_project_name": "kido",
+  "src_dir": "src/main/java",
+  "test_dir": "src/test/java", 
+  "task_definition_file": "tasks.json",
+  "task_files_dir": "tasks",
+  "max_subtask_retries": 2,
+  "check_quality_after_tests": true,
+  "auto_commit_after_subtask": true,
+  "git_enabled": true,
+  "git_repo": ".", 
+  "github_repo": "https://github.com/julymeltdown/for-budget-vibe-coding",
+  "claude_desktop": {
+    "enabled": true,
+    "config_path": "claude_desktop_config.json" 
+  },
+  "notification": {
+    "enabled": true,
+    "config_path": "notification_config.json" 
+  },
+  "project_type": "gradle",
+  "test_runner_config": {
+    "gradle": {
+      "test_command": "./gradlew",
+      "test_command_windows": "gradlew.bat",
+      "test_args": ["test", "--info"],
+      "test_dir": "",
+      "success_pattern": "BUILD SUCCESSFUL",
+      "failure_pattern": "\\d+ tests? failed",
+      "error_pattern": "FAILURE: Build failed"
+    }
+  }
+}

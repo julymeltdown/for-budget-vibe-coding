@@ -1,0 +1,15 @@
+{
+  "window_title": "Claude",
+  "input_delay": 0.5,
+  "screenshot_delay": 1.0,
+  "max_retries": 3,
+  "confidence_threshold": 0.7,
+  "continue_button_text": "Continue",
+  "max_length_message": "Claude hit the maximum length for this conversation",
+  "projects_button_text": "Projects",
+  "assets_dir": "assets",
+  "continue_button_image": "continue_button.png",
+  "projects_button_image": "projects_button.png",
+  "project_button_image": "project_button.png",
+  "max_length_message_image": "max_length_message.png"
+}

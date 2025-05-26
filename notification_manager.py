@@ -192,20 +192,27 @@ class NotificationManager:
         title = "테스트 실패 알림"
         message = f"태스크: {task_id}\n"
         message += f"서브태스크: {subtask_id}\n"
-        message += f"실패한 테스트: {test_result['failure_count']}\n"
-        message += f"오류 테스트: {test_result['error_count']}\n"
         
-        # 실패한 테스트 목록 추출 (최대 5개)
-        failure_pattern = r"FAILED\s+([\w\.]+)::\w+\s+"
-        failures = re.findall(failure_pattern, test_result["output"])
-        
-        if failures:
-            message += "\n실패한 테스트 목록:\n"
-            for i, failure in enumerate(failures[:5]):
-                message += f"{i+1}. {failure}\n"
+        # 안전한 딕셔너리 접근
+        if isinstance(test_result, dict):
+            message += f"실패한 테스트: {test_result.get('failed_count', 0)}\n"
+            message += f"오류 테스트: {test_result.get('error_count', 0)}\n"
             
-            if len(failures) > 5:
-                message += f"외 {len(failures) - 5}개 더..."
+            # 실패한 테스트 목록 추출 (최대 5개)
+            output = test_result.get("output", "")
+            if output:
+                failure_pattern = r"FAILED\s+([\w\.]+)::\w+\s+"
+                failures = re.findall(failure_pattern, output)
+                
+                if failures:
+                    message += "\n실패한 테스트 목록:\n"
+                    for i, failure in enumerate(failures[:5]):
+                        message += f"{i+1}. {failure}\n"
+                    
+                    if len(failures) > 5:
+                        message += f"외 {len(failures) - 5}개 더..."
+        else:
+            message += "테스트 결과 정보를 파싱할 수 없습니다."
         
         return self.send_notification(message, title, "error")
     
