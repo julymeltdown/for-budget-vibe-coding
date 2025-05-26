@@ -71,12 +71,19 @@ class EnhancedTaskOrchestrator:
             "task_history": []
         }
         
+        # Context management for Claude conversations
+        self.current_global_context_summary = "Project setup: Using Task Master MCP for task management."
+        self.max_summary_length = 1000  # Maximum context summary length
+        
         # Task Master MCP check flag
         self.task_master_checked = False
         
         # Error tracking
         self.error_count = 0
         self.last_error_time = None
+        
+        # Load previous context if available
+        self.load_context_state()
         
         logger.info("Enhanced Task Orchestrator initialization complete")
         
@@ -323,6 +330,33 @@ After checking, please organize the results in the following format:
             # Save progress state
             self.save_progress_state()
             
+    def save_context_state(self):
+        """Save context summary to file for persistence between runs"""
+        context_file = os.path.join(LOGS_DIR, "context_summary.json")
+        try:
+            context_data = {
+                "summary": self.current_global_context_summary,
+                "updated_at": datetime.now().isoformat(),
+                "token_info": self.claude.get_token_info() if hasattr(self.claude, 'get_token_info') else {}
+            }
+            with open(context_file, 'w') as f:
+                json.dump(context_data, f, indent=2)
+            logger.debug("Context state saved")
+        except Exception as e:
+            logger.error(f"Failed to save context state: {e}")
+    
+    def load_context_state(self):
+        """Load context summary from previous run"""
+        context_file = os.path.join(LOGS_DIR, "context_summary.json")
+        if os.path.exists(context_file):
+            try:
+                with open(context_file, 'r') as f:
+                    context_data = json.load(f)
+                self.current_global_context_summary = context_data.get("summary", self.current_global_context_summary)
+                logger.info("Context state loaded from previous run")
+            except Exception as e:
+                logger.error(f"Failed to load context state: {e}")
+    
     def save_progress_state(self):
         """Save current progress state to file"""
         progress_file = Path(self.project_root) / "logs" / "orchestrator_progress.json"
@@ -336,6 +370,9 @@ After checking, please organize the results in the following format:
                 json.dump(self.progress_state, f, indent=2)
                 
             logger.info(f"Progress state saved: {progress_file}")
+            
+            # Also save context state whenever progress is saved
+            self.save_context_state()
         except Exception as e:
             logger.error(f"Failed to save progress state: {e}")
             
@@ -378,6 +415,23 @@ After checking, please organize the results in the following format:
             logger.error(f"Error getting task complexity: {e}")
             return 5  # Default to medium complexity
     
+    def _update_and_get_context_summary(self, new_info: str = "") -> str:
+        """Update and return the current context summary"""
+        if new_info:
+            self.current_global_context_summary += f"\nLatest: {new_info}"
+        
+        # Truncate if too long
+        if len(self.current_global_context_summary) > self.max_summary_length:
+            # Keep the most recent information
+            self.current_global_context_summary = self.current_global_context_summary[-self.max_summary_length:]
+            # Find first complete sentence
+            first_sentence = self.current_global_context_summary.find('. ')
+            if first_sentence > 0:
+                self.current_global_context_summary = self.current_global_context_summary[first_sentence + 2:]
+            logger.info("Context summary truncated to maintain size limit")
+        
+        return self.current_global_context_summary
+    
     def process_task_with_mcp(self, task_id: str, subtask_id: Optional[str] = None):
         """Process task using Task Master MCP"""
         logger.info(f"Starting task processing: task_id={task_id}, subtask_id={subtask_id}")
@@ -390,6 +444,14 @@ After checking, please organize the results in the following format:
         if subtask_id:
             self.progress_state["current_subtask"] = {"id": subtask_id, "started_at": datetime.now().isoformat()}
         self.save_progress_state()
+        
+        # Update context summary with current task info
+        task_info_for_summary = f"Working on Task ID: {task_id}"
+        if subtask_id:
+            task_info_for_summary += f", Subtask ID: {subtask_id}"
+        task_info_for_summary += f" (Complexity: {complexity_score}/10)"
+        
+        current_summary = self._update_and_get_context_summary(task_info_for_summary)
         
         # Create prompt using both Task Master MCP and JetBrains MCP
         prompt = f"""Please implement the task using both Task Master MCP and JetBrains MCP tools together.
@@ -443,10 +505,22 @@ Subtask ID: {subtask_id if subtask_id else 'None'}
 Please start the implementation!
 """
         
-        # Send prompt to Claude
+        # Send prompt to Claude with context
         logger.info("Sending task implementation request to Claude Desktop...")
         project_name = self.config.get("dev_project_name", "default")
-        if self.claude.run_automation(prompt, wait_for_continue=True, project_name=project_name, task_complexity=complexity_score):
+        
+        # Check if we should create new chat based on token usage
+        token_info = self.claude.get_token_info()
+        create_new_chat = token_info['percentage_used'] > 70
+        
+        if self.claude.run_automation(
+            prompt, 
+            wait_for_continue=True, 
+            project_name=project_name, 
+            task_complexity=complexity_score,
+            create_new_chat=create_new_chat,
+            conversation_summary_for_new_chat=current_summary if create_new_chat else ""
+        ):
             logger.info("Task implementation request sent successfully")
             
             # Wait for implementation completion (needs more time)
@@ -464,6 +538,9 @@ Please start the implementation!
                 "timestamp": datetime.now().isoformat()
             })
             self.save_progress_state()
+            
+            # Update context with completion info
+            self._update_and_get_context_summary(f"Completed Task {task_id}" + (f" Subtask {subtask_id}" if subtask_id else ""))
             
             # Send completion notification
             self.notification.notify_task_completion(task_id, f"Task {task_id}" + (f" Subtask {subtask_id}" if subtask_id else ""))
@@ -483,6 +560,9 @@ Please start the implementation!
                 "timestamp": datetime.now().isoformat()
             })
             self.save_progress_state()
+            
+            # Update context with failure info
+            self._update_and_get_context_summary(f"Failed Task {task_id}" + (f" Subtask {subtask_id}" if subtask_id else "") + " - implementation request failed")
             
             # Send failure notification
             self.notification.notify_subtask_failure(

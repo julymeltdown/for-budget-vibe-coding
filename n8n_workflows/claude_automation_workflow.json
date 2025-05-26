@@ -1,0 +1,354 @@
+{
+  "name": "Claude Desktop Automation Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4a8c7e8d-1234-5678-9abc-def012345678",
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5002/api/tasks",
+        "options": {
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "status",
+                "value": "pending"
+              }
+            ]
+          }
+        }
+      },
+      "id": "5b9d8f9e-2345-6789-abcd-ef0123456789",
+      "name": "Get Pending Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract task information and prepare for processing\nconst tasks = $input.first().json.tasks;\n\nif (!tasks || tasks.length === 0) {\n  return [{\n    json: {\n      message: \"No pending tasks found\",\n      tasks: []\n    }\n  }];\n}\n\n// Process each task\nreturn tasks.map(task => ({\n  json: {\n    task_id: task.id,\n    task_name: task.name,\n    task_description: task.description,\n    priority: task.priority,\n    subtasks: task.subtasks || []\n  }\n}));"
+      },
+      "id": "6cae9faf-3456-789a-bcde-f01234567890",
+      "name": "Process Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "command": "python /project/task_master_wrapper.py show --task {{$json.task_id}}"
+      },
+      "id": "7dbf0fb0-4567-89ab-cdef-012345678901",
+      "name": "Get Task Details",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare Claude prompt based on task details\nconst taskDetails = $input.first().json;\nconst taskId = $node[\"Process Tasks\"].json.task_id;\nconst taskName = $node[\"Process Tasks\"].json.task_name;\n\n// Create a comprehensive prompt\nconst prompt = `Task ID: ${taskId}\nTask Name: ${taskName}\n\nPlease implement the following task:\n${taskDetails.stdout || taskDetails}\n\nRequirements:\n1. Follow best practices and coding standards\n2. Include error handling\n3. Add appropriate comments\n4. Create tests if applicable\n\nPlease implement this task step by step.`;\n\nreturn [{\n  json: {\n    task_id: taskId,\n    prompt: prompt,\n    project_name: \"automation-project\",\n    wait_for_continue: true,\n    create_new_chat: false\n  }\n}];"
+      },
+      "id": "8ec01fc1-5678-9abc-def0-123456789012",
+      "name": "Prepare Claude Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:5001/api/automation/run",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "={{$json.prompt}}"
+            },
+            {
+              "name": "wait_for_continue",
+              "value": "={{$json.wait_for_continue}}"
+            },
+            {
+              "name": "create_new_chat",
+              "value": "={{$json.create_new_chat}}"
+            },
+            {
+              "name": "project_name",
+              "value": "={{$json.project_name}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9fd12fd2-6789-abcd-ef01-234567890123",
+      "name": "Trigger Claude Automation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "a0e23fe3-789a-bcde-f012-345678901234",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://host.docker.internal:5001/api/automation/status/{{$node[\"Trigger Claude Automation\"].json.task_id}}",
+        "options": {}
+      },
+      "id": "b1f34ff4-89ab-cdef-0123-456789012345",
+      "name": "Check Automation Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "operation": "equals",
+              "value2": "completed"
+            }
+          ]
+        }
+      },
+      "id": "c2045005-9abc-def0-1234-567890123456",
+      "name": "IF Status Complete",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "command": "python /project/task_orchestrator_enhanced.py --run-tests --task {{$node[\"Process Tasks\"].json.task_id}}"
+      },
+      "id": "d3156116-abcd-ef01-2345-678901234567",
+      "name": "Run Tests",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2050, 200]
+    },
+    {
+      "parameters": {
+        "command": "python /project/task_master_wrapper.py set-status --id {{$node[\"Process Tasks\"].json.task_id}} --status done"
+      },
+      "id": "e4267227-bcde-f012-3456-789012345678",
+      "name": "Update Task Status",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2250, 200]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "f5378338-cdef-0123-4567-890123456789",
+      "name": "Wait Longer",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2050, 400]
+    },
+    {
+      "parameters": {
+        "message": "Task {{$node[\"Process Tasks\"].json.task_name}} completed successfully!",
+        "additionalFields": {}
+      },
+      "id": "06489449-def0-1234-5678-901234567890",
+      "name": "Send Success Notification",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [2450, 200],
+      "disabled": true,
+      "notes": "Configure Slack credentials to enable notifications"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "error",
+              "value": "Automation timeout or failed"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1759a55a-ef01-2345-6789-012345678901",
+      "name": "Set Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [2250, 400]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Tasks": {
+      "main": [
+        [
+          {
+            "node": "Process Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Tasks": {
+      "main": [
+        [
+          {
+            "node": "Get Task Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Task Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claude Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claude Prompt": {
+      "main": [
+        [
+          {
+            "node": "Trigger Claude Automation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Claude Automation": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Check Automation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Automation Status": {
+      "main": [
+        [
+          {
+            "node": "IF Status Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Status Complete": {
+      "main": [
+        [
+          {
+            "node": "Run Tests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Longer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Tests": {
+      "main": [
+        [
+          {
+            "node": "Update Task Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Task Status": {
+      "main": [
+        [
+          {
+            "node": "Send Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Longer": {
+      "main": [
+        [
+          {
+            "node": "Check Automation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Error": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "01234567-89ab-cdef-0123-456789abcdef",
+  "id": "1",
+  "meta": {
+    "instanceId": "n8n-claude-automation"
+  },
+  "tags": []
+}

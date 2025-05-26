@@ -546,6 +546,23 @@ class ClaudeDesktopAutomation:
         logger.warning(f"Response timeout after {extended_timeout} seconds (no recent activity for {elapsed_time - last_activity_time}s).")
         return "timeout"
     
+    def get_token_info(self) -> dict:
+        """Get current token usage information"""
+        return {
+            'current_tokens': self.current_conversation_tokens,
+            'max_tokens': self.max_tokens_per_conversation,
+            'percentage_used': (self.current_conversation_tokens / self.max_tokens_per_conversation) * 100,
+            'interaction_count': self.interaction_count,
+            'interaction_threshold': self.interaction_count_threshold
+        }
+    
+    def reset_conversation_tracking(self):
+        """Reset token and interaction tracking"""
+        self.current_conversation_tokens = 0
+        self.interaction_count = 0
+        self.current_conversation_summary = ""
+        logger.info("Conversation tracking reset")
+    
     def setup_buttons(self):
         logger.info("Starting button image setup...")
         logger.info("TIP: You can skip this step if you already have captured images.")
@@ -655,7 +672,13 @@ class ClaudeDesktopAutomation:
                     logger.error("Usage limit reached and max retries exceeded. Aborting.")
                     return False
             elif response_status == "max_length_handled":
-                logger.warning("Max length reached; new chat is ready. Current prompt processing failed.")
+                logger.warning("Max length reached; new chat is ready with context preserved.")
+                # Continue with the same prompt in the new chat
+                if self.input_text(input_text_content):
+                    self.press_enter()
+                    response_status = self._wait_for_response_core(project_name, wait_for_continue)
+                    if response_status == "success":
+                        return True
                 return False
             elif response_status == "failure" or response_status == "timeout":
                 logger.error(f"Response handling failed or timed out ({response_status}).")

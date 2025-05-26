@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n_automation_orchestrator
+    restart: unless-stopped
+    ports:
+      - "5678:5678" # n8n web interface port
+    environment:
+      - GENERIC_TIMEZONE=Asia/Seoul
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your_secret_encryption_key_here}
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - N8N_BASIC_AUTH_ACTIVE=false
+      # Webhook URL configuration for external access
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - ./n8n_data:/home/node/.n8n # n8n data persistence
+      - ./shared_workspace:/workspace # Shared workspace for scripts and configs
+      - ./config.json:/workspace/config.json:ro
+      - ./tasks.json:/workspace/tasks.json
+      - ./logs:/workspace/logs
+      - ./scripts:/workspace/scripts
+      # Mount for accessing Python scripts
+      - .:/project:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # For accessing host services from container
+    networks:
+      - automation_net
+
+volumes:
+  n8n_data:
+
+networks:
+  automation_net:
+    driver: bridge
